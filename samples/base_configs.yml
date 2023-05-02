@@ -1,0 +1,4 @@
+samples/CNC.elf:
+  rules: "samples/f429.txt"
+  fork_points: [0x8001e8e]
+  enable_native: False

@@ -1,0 +1,15 @@
+__pycache__
+.vscode
+*.egg-info
+build
+core
+afl-unicorn
+AFLplusplus
+
+# output
+debug_output
+stat_output
+output
+plots
+
+nohup.out
