@@ -6,7 +6,10 @@ Usage: semu-fuzz-helper stat <base_configs.yml> [-t <time>]
 import argparse
 import os
 import subprocess
+from time import perf_counter, sleep
 from .stat_draw_bb_img import draw
+
+DEBUG = True # Recommend setting True to get most info in stat.
 
 def _find_file(folder_path):
     # find all the files in folder_path
@@ -59,18 +62,22 @@ def stat(base_configs, duration):
                 commands.append(command_line)
             # execute commands in order
             for command in commands:
-                try:
-                    subprocess.run(command, shell=True, check=True)
-                except Exception as e:
-                    print("[-] Failed! {}".format(e))
-                    iscontinue = input("[*] Do you want to continue stating this firmware?[Y/n]")
-                    # don't exit immediately
-                    if iscontinue in ["n", "N"]:
-                        print("[+] Well, skip this firmware.")
-                        iscontinue = input("[*] Do you want to continue stating next firmware?[Y/n]")
-                        if iscontinue in ["n", "N"]:
-                            exit(-1)
+                if DEBUG:
+                    print("[*] Start Command: %s" % command)
+                proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                # wait for proc stop
+                start_time = perf_counter()
+                while True:
+                    if proc.poll() is not None:
                         break
+                    # timeout: 10s
+                    if perf_counter() - start_time > 10:
+                        if DEBUG:
+                            print("[-] Process timed out. Killing process...")
+                            # exit(-1)
+                        proc.kill()
+                    sleep(0.1) # check proc status every 0.1s
+            # draw picture with 'new_blocks.txt'
             draw(firmware_dir, duration * 3600)
         except Exception as e:
             print("[-] Failed! {}".format(e))

@@ -13,7 +13,7 @@ def run(base_configs, duration):
         try:
             firmware_dir = os.path.dirname(firmware_elfpath)
             firmware_elfname = os.path.basename(firmware_elfpath)
-            input_path = os.path.dirname(__file__) + '_inputs'
+            input_path = os.path.join(os.path.dirname(__file__), '_inputs')
             base_input_path = os.path.join(firmware_dir, 'base_inputs')
             output_path = os.path.join(firmware_dir, "output")
             config_path = os.path.join(firmware_dir, 'semu_config.yml')

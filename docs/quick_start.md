@@ -16,13 +16,17 @@ You can use the configuration files provided in our [fuzz_tests](https://github.
     cd SEmu/DataSet/fuzz_tests
     ```
 
-Then you can run this command to see all the configuration files:
+    And use `semu-fuzz-helper` to generate all the configs:
+    ```bash
+    semu-fuzz-helper config base_configs.yml
+    ```
 
-```bash
-find . -maxdepth 3 -type f -name "*config*"
-```
+3. You can run this command to see all the configuration files:
+    ```bash
+    find . -maxdepth 3 -type f -name "*config*"
+    ```
 
-You will see one `base_configs.yml` and many `semu_config.yml`.
+    You will see one `base_configs.yml` and many `semu_config.yml`.
 
 Now you can turn to [next phrase](#2-use-semu-fuzz).
 
