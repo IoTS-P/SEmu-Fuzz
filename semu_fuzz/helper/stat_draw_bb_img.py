@@ -8,23 +8,22 @@ import os
 import sys
 
 plots_dir = 'plots'
-samples_dir = 'samples'
 fuzzs_block_dir = 'stat_output/new_blocks.txt'
 
 import datetime
 
 def draw(elf_dir, duration):
-    print('[*] Plot Block Coverage of %s...' % elf_dir, end="\t")
-
-    # create plots dir
-    if not os.path.exists(plots_dir):
-        os.mkdir(plots_dir)
-
     # dirname
     fuzz_block_path = os.path.join(elf_dir, fuzzs_block_dir)
     plot_path = os.path.join(plots_dir, "plot-" + elf_dir.replace("/", "-"))
     plot_png_path = plot_path + ".png"
     plot_dat_path = plot_path + ".dat"
+
+    print('[*] Plot Block Coverage of %s...' % elf_dir, end="\t")
+
+    # create plots dir
+    if not os.path.exists(plots_dir):
+        os.mkdir(plots_dir)
 
     # read data
     data = []
