@@ -3,7 +3,6 @@ Description: stat bb coverage from afl output.
 Usage: semu-fuzz-helper stat <base_configs.yml> [-t <time>]
 '''
 
-import argparse
 import os
 import subprocess
 from time import perf_counter, sleep
@@ -16,17 +15,6 @@ DEBUG = True # Recommend setting True to get most info in stat.
 def _find_file(folder_path):
     # find all the files in folder_path
     return [os.path.join(folder_path, file) for file in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, file))]
-
-def _get_file_sorted(folder_path):
-    # get create time
-    files = []
-    for file_name in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, file_name)
-        if os.path.isfile(file_path):
-            create_time = os.path.getctime(file_path)
-            files.append((file_name, create_time))
-    # sort
-    return [os.path.join(folder_path, file_name) for file_name,_ in sorted(files, key=lambda x: x[1])]
 
 def _run_task(command, task_id):
     if DEBUG:
@@ -100,7 +88,7 @@ def stat(base_configs, duration):
             # start stat
             commands = []
             # find all the file in fuzz_queue_dir and sort them.
-            for fuzz_input in _get_file_sorted(fuzz_queue_dir):
+            for fuzz_input in _find_file(fuzz_queue_dir):
                 command_line = "semu-fuzz %s %s -s " % (fuzz_input, config_path)
                 commands.append(command_line)
 

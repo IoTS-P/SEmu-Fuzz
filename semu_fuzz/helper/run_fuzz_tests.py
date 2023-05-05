@@ -3,9 +3,7 @@ Description: run afl test of testcases with nohup.
 Usage: semu-fuzz-helper run <base_configs.yml> [-t <time>]
 '''
 
-import argparse
 import os
-import subprocess
 
 def run(base_configs, duration):
     # dump all the file

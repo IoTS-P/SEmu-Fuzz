@@ -5,7 +5,6 @@ Usage: Just used in stat_bb_coverage.py
 
 import subprocess
 import os
-import sys
 
 plots_dir = 'plots'
 fuzzs_block_dir = 'stat_output/new_blocks.txt'

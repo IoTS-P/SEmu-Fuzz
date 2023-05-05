@@ -3,7 +3,6 @@ Description: dump vscode launch json for testcases.
 Usage: semu-fuzz-helper launch <base_configs.yml> [-a]
 '''
 
-import argparse
 import os
 import json
 

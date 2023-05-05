@@ -8,8 +8,6 @@ from ..utils import merge_dict
 
 import yaml
 import angr
-import argparse
-import sys
 import os
 from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
@@ -31,12 +29,12 @@ def _extra_syms(firmware_elfpath, yml_path):
                             if isinstance(s, SymbolTableSection)]
 
         if not symbol_tables and elffile.num_sections() == 0:
-            logger.warning("No symbol sections...")
+            print("[-] No symbol sections...")
             return res
 
         for _, section in symbol_tables:
             if section['sh_entsize'] == 0:
-                logger.warning("section['sh_entsize'] == 0")
+                print("[-] section['sh_entsize'] == 0")
                 # Symbol table has no entries
                 continue
 
@@ -118,6 +116,7 @@ def config(base_configs, syms):
                 if os.path.exists(yml_path):
                     config["include"].append('./syms.yml')
                 elif syms:
+                    print("with symbols tables...", end='\t')
                     _extra_syms(firmware_elfpath, yml_path)
 
                 # auto include arch info

@@ -4,10 +4,7 @@ from .stat_bb_coverage import stat
 from .dump_launch import launch
 from .run_fuzz_tests import run
 
-import yaml
 import argparse
-import os
-import json
 
 def _parse_args():
     parser = argparse.ArgumentParser(description="semu-fuzz-helper is a command-line utility that provides additional functionality to semu-fuzz. The tool allows users to configure and launch fuzzing campaigns, as well as collect bb coverage statistics on the performance of these campaigns.")
