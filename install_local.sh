@@ -44,5 +44,6 @@ cd ../../
 
 # install SEmu-Fuzz
 pip install . || exit 1
+semu-fuzz-helper config samples/base_configs.yml || exit 1
 semu-fuzz samples/base_inputs/sample1.bin samples/semu_config.yml || exit 1
 echo "Success to install SEmu-Fuzz!"

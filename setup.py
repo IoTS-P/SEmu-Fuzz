@@ -33,9 +33,9 @@ setup(
     version='0.1',
     packages=['semu_fuzz'],
     install_requires=[
-        'pyyaml==6.0',
-        'capstone==4.0.2',
-        'angr==9.2.48',
+        'pyyaml>=6.0',
+        'angr>9.2.6',
+        'capstone>=4.0.2',
         'unicornafl',
         'archinfo',
         'pyelftools'

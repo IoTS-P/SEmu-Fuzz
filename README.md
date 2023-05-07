@@ -79,10 +79,16 @@ The dependency of `SEmu-Fuzz` is very minimal, and it can be installed directly 
 
 We also provide a script which covers installation.
 
-Just run (Recommended Python > 3.6):
+Ubuntu >= 20, just run (Recommended Python >= 3.8):
 
 ```bash
 ./install_local.sh
+```
+
+Ubuntu < 20, please run the following script to fix the dependency of angr and AFLplusplus:
+
+```bash
+./install_local_ubuntu18.sh
 ```
 
 This script has 3 functions:
@@ -90,7 +96,7 @@ This script has 3 functions:
 2. Add command `semu-fuzz` and `semu-fuzz-helper` for use.
 3. Install [AFLplusplus](https://github.com/AFLplusplus/AFLplusplus).
 
-When you need raw [AFL](https://github.com/shandianchengzi/afl-unicorn), just change the link and dirname in [install_local.sh#L30-L31](./install_local.sh#L30-L31), and run it again.
+When you need raw [AFL](https://github.com/shandianchengzi/afl-unicorn), just change the link and dirname in [install_local.sh#L30-L31](./install_local.sh#L30-L31) or [install_local_ubuntu18.sh#L50-L51](./install_local_ubuntu18.sh#L50-L51), and run it again.
 
 **Note:** the original AFL has many issues, such as mistaking `semu-fuzz` as a shell script, making it impossible to perform fuzzing tests. To address this issue, we also provide a [modified AFL](https://github.com/shandianchengzi/afl-unicorn) with some configuration changes.
 
@@ -156,13 +162,18 @@ Options:
 
 This repository provides a simple test case that you can use to verify the proper installation of `semu-fuzz` and `semu-fuzz-helper`, and test their basic functionality. If you want to re-run our experiments, you can replace this testcase and configuration file with our [unit-test](https://github.com/MCUSec/SEmu/tree/main/DataSet/p2im-unit-tests) and [fuzzing-test](https://github.com/MCUSec/SEmu/tree/main/DataSet/fuzz_tests) simples.
 
-1. Use `semu-fuzz` to debug with debug level 3:
+1. Dump `semu_config` file:
+    ```bash
+    semu-fuzz-helper config samples/base_configs.yml
+    ```
+
+2. Use `semu-fuzz` to debug with debug level 3:
     ```bash
     semu-fuzz samples/base_inputs/sample1.bin samples/semu_config.yml -d 3
     ```
     If the execution is successful, you will see the debugging information in the `samples/debug_output` directory.
 
-2. Use `semu-fuzz-helper` to generate a vscode launch file:
+3. Use `semu-fuzz-helper` to generate a vscode launch file:
     ```bash
     semu-fuzz-helper launch samples/base_configs.yml
     ```

@@ -13,12 +13,13 @@ from elftools.elf.elffile import ELFFile
 from elftools.elf.sections import SymbolTableSection
 
 extra_bin_command = "arm-none-eabi-objcopy" #"arm-linux-gnueabihf-objcopy"
+extra_bin_command_install = "binutils-arm-none-eabi" #"gcc-arm-linux-gnueabihf"
 cortexm_include = os.path.join(os.path.dirname(__file__), "configs/hw/cortexm_memory.yml")
 
 def _extra_bin(elf_path, bin_path):
     ret = os.system("%s -O binary %s %s" % (extra_bin_command, elf_path, bin_path))
     if ret != 0:
-        print("[-] Extra Bin File Error! Please check the command arm-linux-gnueabihf. You can use 'sudo apt install -y gcc-arm-linux-gnueabihf' to install it.")
+        print(f"[-] Extra Bin File Error! Please check the command {extra_bin_command}. You can use 'sudo apt install -y {extra_bin_command_install}' to install it.")
 
 def _extra_syms(firmware_elfpath, yml_path):
     # Based on https://github.com/eliben/pyelftools/blob/master/scripts/readelf.py, display_symbol_tables
@@ -93,7 +94,7 @@ def config(base_configs, syms):
             }
             firmware_dir = os.path.dirname(firmware_elfpath)
             firmware_elfname = os.path.basename(firmware_elfpath)
-            firmware_binname = firmware_elfname.split('.',1)[0] + '.bin'
+            firmware_binname = firmware_elfname.rsplit('.',1)[0] + '.bin'
             firmware_binpath = os.path.join(firmware_dir, firmware_binname)
             yml_path = os.path.join(firmware_dir, 'syms.yml')
             config_path = os.path.join(firmware_dir, 'semu_config.yml')
