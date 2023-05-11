@@ -20,7 +20,7 @@ class DataReg:
         self.r_size = 0 # the size of rxbuffer
         self.r_value = 0
         self.r_fifo = []
-        self.fuzz_r_fifo = [] # all the fuzz input
+        self.user_r_fifo = [] # all the user input
         self.t_size = 0 # the size of txbuffer
         self.t_value = 0
 

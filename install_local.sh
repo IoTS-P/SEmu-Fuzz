@@ -31,7 +31,7 @@ git clone https://github.com/AFLplusplus/AFLplusplus
 cd AFLplusplus/
 make || exit 1
 sudo make install || exit 1
-git submodule update --remote unicorn_mode || exit 1 # don't update other submodule
+git -C unicorn_mode submodule foreach --recursive git pull origin master || exit 1 # don't update other submodule
 cd unicorn_mode/
 ./build_unicorn_support.sh || exit 1
 # fix the libunicorn.so

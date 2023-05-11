@@ -17,6 +17,13 @@ sudo -S apt install python3.8-distutils -y
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test
 sudo apt update
 
+# fix cmake
+# CMake 3.13.4 or higher is required to build LLVM-13 from source.
+# Ubuntu 18.04 comes with cmake 3.10.2
+# Install the latest cmake (as of this writing)
+wget -O cmake.sh https://github.com/Kitware/CMake/releases/download/v3.23.1/cmake-3.23.1-Linux-x86_64.sh && \
+    sudo sh ./cmake.sh --prefix=/usr/local --skip-license
+
 # setup environment variable of virtualenv
 if [ -z $VIRTUALENVWRAPPER_PYTHON ]; then
     echo "export VIRTUALENVWRAPPER_PYTHON=python3.8" >> ~/.bashrc
@@ -52,7 +59,7 @@ git clone https://github.com/AFLplusplus/AFLplusplus
 cd AFLplusplus/
 make || exit 1
 sudo make install || exit 1
-git submodule update --remote unicorn_mode || exit 1 # don't update other submodule
+git -C unicorn_mode submodule foreach --recursive git pull origin master || exit 1 # don't update other submodule
 cd unicorn_mode/
 ./build_unicorn_support.sh || exit 1
 # fix the libunicorn.so
