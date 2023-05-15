@@ -24,6 +24,7 @@ ISER_BASE = 0xE000E100 # interrupt set enabled reg
 ICER_BASE = 0xE000E180 # interrupt clear enabled reg
 ISPR_BASE = 0xE000E200 # interrupt set pending reg
 ICPR_BASE = 0xE000E280 # interrupt clear pending reg
+NVIC_IP_BASE = 0xE000E400 # interrupt priority
 SYSTICK_CTRL = 0xE000E010 # systick control
 SYSTICK_LOAD = 0xE000E014 # systick load
 SYSTICK_VAL = 0xE000E018 # systick val
@@ -122,9 +123,11 @@ def _nvic_tick_check(uc, address, size, user_data):
     every INTERRUPT_INTERVAL blocks, active the tick timer irq
     '''
     NVIC.check_pending()
-    block = globs.block_count % globs.INTERRUPT_INTERVAL
-    if block == 0 and (NUM_SYSTICK in NVIC.enabled) and globs.config.enable_systick and nvic_get_active() != NUM_SYSTICK: # SYSTICK
-        send_pending(uc, NUM_SYSTICK)
+    NVIC.systick['tick_val'] -= 1
+    if NVIC.systick['tick_val'] == 0:
+        NVIC.systick['tick_val'] = NVIC.systick['reload_val']
+        if (NUM_SYSTICK in NVIC.enabled) and nvic_get_active() != NUM_SYSTICK: # SYSTICK
+            send_pending(uc, NUM_SYSTICK)
 
 def _nvic_intr_handle(uc, intno, size):
     '''
@@ -221,6 +224,15 @@ def _handler_state_write(uc, mem_type, address, size, value, user_data):
                 if DEBUG_NVIC:
                     print("############### Setting nvic #0x{:02x}.pending to 0".format(irq))
 
+def _handler_nvic_ip_write(uc, mem_type, address, size, value, user_data):
+    '''
+    hook when write nvic interrupt priority reg, used to update priority
+    '''
+    irq = address - NVIC_IP_BASE + 0x10 # not for exception
+    NVIC.vectors[irq].prio = value
+    if DEBUG_NVIC:
+        print("############### Setting nvic #0x{:02x}.priority to {:x}".format(irq, value))
+
 def _handler_systick_ctrl_write(uc, mem_type, address, size, value, user_data):
     '''
     hook when write systick_ctrl reg,
@@ -233,6 +245,10 @@ def _handler_systick_ctrl_write(uc, mem_type, address, size, value, user_data):
         if value & 0x1:
             # start_timer(uc, NVIC.systick['timer_ind'])
             NVIC.set_able(NUM_SYSTICK)
+            # reset systick val
+            NVIC.systick['tick_val'] = NVIC.systick['reload_val']
+            if DEBUG_NVIC:
+                print("############### Enable Systick. reload_val=%u" % NVIC.systick['reload_val'])
         else:
             # stop_timer(uc, NVIC.systick['timer_ind'])
             NVIC.remove_able(NUM_SYSTICK)
@@ -249,7 +265,7 @@ class VecInfo:
     vector(prio, enabled, level, pending, active)
     '''
     def __init__(self, prio=0, enabled=False, level=0, pending=False, active=False):
-        self.prio = prio # default: 0
+        self.prio = prio # default is 0
         self.enabled = enabled
         self.level = level
         self.pending = pending
@@ -267,7 +283,9 @@ class NVIC():
         uc.mem_write(VTOR_BASE, initial_vtor.to_bytes(4, 'little'))
         cls.icsr = 0
         cls.systick = {
-            'ctrl': 0
+            'ctrl': 0,
+            'tick_val': globs.INTERRUPT_INTERVAL,
+            'reload_val': globs.INTERRUPT_INTERVAL
         }
         # the state of nvic
         cls.little_endian = (uc.query(UC_QUERY_MODE) & UC_MODE_BIG_ENDIAN) == 0
@@ -277,10 +295,10 @@ class NVIC():
         cls.enabled = set() # enabled set
         cls.pending = [] # pending list
 
-        # init the state of vectors
+        # init the state of vectors, set prio = 0
         cls.vectors = [VecInfo() for _ in range(num_vecs)]
 
-        # init priority of vectors
+        # init special priority of vectors
         cls.vectors[NUM_Reset].prio = -3
         cls.vectors[NUM_NMI].prio = -2
         cls.vectors[NUM_HardFault].prio = -1
@@ -301,8 +319,13 @@ class NVIC():
                     user_data=None, begin=ISER_BASE, end=ICPR_BASE + int(num_vecs/8) - 1)
         
         # Listen for changes to SYSTICK_CTRL
-        uc.hook_add(UC_HOOK_MEM_WRITE, _handler_systick_ctrl_write,
+        if globs.config.enable_systick:
+            uc.hook_add(UC_HOOK_MEM_WRITE, _handler_systick_ctrl_write,
                     user_data=None, begin=SYSTICK_CTRL, end=SYSTICK_CTRL + 3)
+        
+        # Listen for changes to NVIC_IP
+        uc.hook_add(UC_HOOK_MEM_WRITE, _handler_nvic_ip_write,
+                    user_data=None, begin=NVIC_IP_BASE, end=NVIC_IP_BASE + int(num_vecs) - 1)
             
         # Listen for interrupt return or SVC
         uc.hook_add(UC_HOOK_INTR, _nvic_intr_handle)
@@ -320,6 +343,9 @@ class NVIC():
         Detect whether the irq is enabled
         '''
         # TODO: PRIMASK, BASEPRI
+        primask = globs.uc.reg_read(UC_ARM_REG_PRIMASK)
+        if primask & 0x1 and ind not in [NUM_HardFault, NUM_NMI, NUM_Reset]:
+            return False
         if ind <= 0x10:
             return True
         elif ind in cls.enabled:
@@ -333,11 +359,22 @@ class NVIC():
         """
         Find the next pending interrupt to acknowledge (activate)
         """
-        if len(cls.pending):
-            irq = cls.pending[0]
-            cls.remove_pending(irq)
-            return irq
-        return -1
+        if len(cls.pending) == 0:
+            return -1
+
+        min_prio = 0xffffffff  # default max
+        min_pend = -1
+
+        for irq in cls.pending:
+            priority = cls.vectors[irq].prio
+            if priority < min_prio and cls._is_enabled(irq):
+                min_prio = priority
+                min_pend = irq
+
+        if min_pend != -1:
+            cls.pending.remove(min_pend)
+
+        return min_pend
 
     @classmethod
     def _push_state(cls):
@@ -505,7 +542,7 @@ class NVIC():
         '''
         if cls.curr_active == -1:
             ind = cls._find_pending()
-            if ind != -1 and cls._is_enabled(ind):
+            if ind != -1:
                 if DEBUG_NVIC:
                     print("[*] Interrupt #0x%02x: Activating..."%ind)
                 try:
