@@ -1,9 +1,11 @@
 from .. import globs
+from ..exit import do_exit
 from .log import log_configure
 
-from unicorn import UC_HOOK_CODE, UC_HOOK_BLOCK
+from unicorn import UC_HOOK_CODE, UC_HOOK_BLOCK, UC_HOOK_MEM_WRITE_UNMAPPED, UC_HOOK_MEM_READ_INVALID, UC_MEM_WRITE_UNMAPPED
 from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_LR
 from time import perf_counter
+import sys
 
 debug_file_list = {
     "function": "function.txt",
@@ -17,6 +19,8 @@ def debug_configure():
     global debug_file_list, glob_debug_level, time_start
     debug_file_list = log_configure("debug_output", debug_file_list)
     glob_debug_level = globs.args.debug_level
+    # add invalid mem access hook
+    globs.uc.hook_add(UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_READ_INVALID, _hook_mem_invalid_access)
     # add function hook
     if glob_debug_level > 0 and globs.config.symbols:
         globs.uc.hook_add(UC_HOOK_CODE, _hook_funtion)
@@ -60,6 +64,18 @@ def _hook_instruction(uc, address, size, user_data):
     for (cs_address, cs_size, cs_mnemonic, cs_opstr) in cs.disasm_lite(bytes(mem), size):
         debug_info("    Instr: {:#016x}:\t{}\t{}\n".format(address, cs_mnemonic, cs_opstr), 3)
 
+def _hook_mem_invalid_access(uc, access, address, size, value, user_data):
+    '''
+    hook invalid mem access and log. 
+    Used if globs.debug_level > 0.
+    '''
+    if access == UC_MEM_WRITE_UNMAPPED:
+        print("[-] INVALID Mem Write: addr= 0x{0:016x} size={1} data=0x{2:016x}".format(address, size, value))
+    else:
+        print("[-] INVALID Read: addr= 0x{0:016x} size={1}, pc= 0x{2:016x}".format(address, size, uc.reg_read(UC_ARM_REG_PC)))
+    sys.stdout.flush()
+    do_exit(-1)
+
 def _hook_block(uc, address, size, user_data):
     '''
     hook block and log. 
@@ -74,3 +90,4 @@ def _hook_funtion(uc, address, size, user_data):
     '''
     if address in globs.config.symbols:
         debug_function("%d %s %s\n"%(globs.block_count, hex(address), globs.config.symbols[address]))
+
