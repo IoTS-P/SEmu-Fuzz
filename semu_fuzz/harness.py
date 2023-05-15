@@ -27,7 +27,10 @@ def main():
         fuzz_stat.stat_configure()
 
     # configure nvic
-    nvic.nvic_configure(uc)
+    if config.isr_vector >= 0x8000000:
+        nvic.nvic_configure(uc, 256, 0x8000000)
+    else:
+        nvic.nvic_configure(uc, 256, 0x0)
 
     # configure rule
     rules_configure(uc, globs.config.rules)

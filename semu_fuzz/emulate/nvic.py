@@ -264,6 +264,7 @@ class NVIC():
         cls.uc = uc
         # the init value of special regs
         cls.vtor = initial_vtor
+        uc.mem_write(VTOR_BASE, initial_vtor.to_bytes(4, 'little'))
         cls.icsr = 0
         cls.systick = {
             'ctrl': 0
@@ -415,14 +416,17 @@ class NVIC():
         new_lr = EXC_RETURN
 
         # TODO: When the stack is SP_main, no way to know whether is in Mode_thread
+        # TODO: Don't know why some system(such as RT-Thread) don't use NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG in SP switch, so just delete it, just use the only one flag 'NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG'
 
         control = uc.reg_read(UC_ARM_REG_CONTROL)
+
+        new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG
 
         if (control & 0x2) == 0x2:
         # When the stack is SP_process, switch to SP_Main
             control ^= 0x2
             uc.reg_write(UC_ARM_REG_CONTROL, control)
-            new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG | NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG
+            new_lr |= NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG
 
         # Find the ISR entry point and set it
         isr, = struct.unpack(cls.pack_prefix+"I",
@@ -478,10 +482,10 @@ class NVIC():
         # TODO: recals_prios();
 
         # Pop the current stack state
-        if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) :
         # When returning to thread mode:
+        if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) :
+        # When need to change stack to SP_process:
             if(addr & NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG):
-            # When need to change stack to SP_process:
                 control = uc.reg_read(UC_ARM_REG_CONTROL)
                 if (control & 0x2) != 0x2:
                     control ^= 0x2

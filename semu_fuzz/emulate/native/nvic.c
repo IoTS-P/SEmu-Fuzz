@@ -162,11 +162,13 @@ static void _enter_exception(uint16_t num) {
     uint32_t control;
     uc_reg_read(uc, UC_ARM_REG_CONTROL, &control);
 
+    new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG;
+
     if ((control & 0x2) == 0x2) {
         // When the stack is SP_process, switch to SP_Main
         control ^= 0x2;
         uc_reg_write(uc, UC_ARM_REG_CONTROL, &control);
-        new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG | NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG;
+        new_lr |= NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG;
     }
 
     // Find the ISR entry point and set it
@@ -204,10 +206,10 @@ static bool exit_handler(uc_engine *uc, uint32_t addr) {
     // TODO: recals_prios();
 
     // Pop the current stack state
+    // When returning to thread mode:
     if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) {
-        // When returning to thread mode:
+    // When need to change stack to SP_process:
         if (addr & NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG) {
-            // When need to change stack to SP_process:
             uint32_t control;
             uc_reg_read(uc, UC_ARM_REG_CONTROL, &control);
             if ((control & 0x2) != 0x2) {
@@ -444,6 +446,7 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
     nvic.num_vecs = num_vecs;
     // the init value of special regs
     nvic.vtor = initial_vtor;
+    uc_mem_write(uc, VTOR_BASE, &initial_vtor, 4);
     nvic.icsr = 0;
     nvic.systick.is_load = false;
     nvic.systick.reload_val = systick_reload;
