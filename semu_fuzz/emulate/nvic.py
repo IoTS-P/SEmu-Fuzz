@@ -55,7 +55,7 @@ def nvic_configure(uc, num_vecs=256, initial_vtor=0):
         return
     NVIC.configure(uc, num_vecs, initial_vtor)
 
-def send_pending(uc, irq=-1, rand=False):
+def send_pending(uc, irq=0, rand=False):
     '''
     when current irq is not 'irq', pending 'irq',
     if irq is not set, pending one in order.
@@ -65,7 +65,7 @@ def send_pending(uc, irq=-1, rand=False):
         native_nvic.send_pending(uc._uch, irq)
         return
     # if irq is not set, choice one to pending
-    if irq == -1:
+    if irq == 0:
         # if no enabled irq, just return
         if len(NVIC.enable) == 0:
             return
@@ -82,8 +82,6 @@ def send_pending(uc, irq=-1, rand=False):
             # set the next irq
             irq = NVIC.enabled[index]
             NVIC.last_active_index = index
-    # # if curr_active is not irq, send pending, to prevent repeat active
-    # if NVIC.curr_active != irq: # 
     # use NVIC to set pending
     NVIC.set_pending(irq)
 
@@ -105,9 +103,6 @@ def nvic_get_active():
         from ctypes import c_int16
         return c_int16(native_nvic.nvic_get_active()).value
     NVIC.curr_active = globs.uc.reg_read(UC_ARM_REG_IPSR)
-    if NVIC.curr_active == 0:
-        NVIC.curr_active = -1 # TODO: change to 0
-        return -1
     return NVIC.curr_active
 
 def nvic_get_pending(irq):
@@ -289,8 +284,7 @@ class NVIC():
         # the state of nvic
         cls.little_endian = (uc.query(UC_QUERY_MODE) & UC_MODE_BIG_ENDIAN) == 0
         cls.pack_prefix = "<" if cls.little_endian else ">"
-        cls.curr_active = -1 # current active vector
-        cls.last_active_index = -1 # last active vector
+        cls.last_active_index = 0 # last active vector
         cls.enabled = set() # enabled set
         cls.pending = [] # pending list
 
@@ -359,10 +353,10 @@ class NVIC():
         Find the next pending interrupt to acknowledge (activate)
         """
         if len(cls.pending) == 0:
-            return -1
+            return 0
 
         min_prio = 0xffffffff  # default max
-        min_pend = -1
+        min_pend = 0
 
         for irq in cls.pending:
             priority = cls.vectors[irq].prio
@@ -371,10 +365,11 @@ class NVIC():
                 min_pend = irq
 
         # don't interrupt when a higher or same priority interrupt active.
-        if cls.curr_active != -1 and cls.vectors[cls.curr_active].prio <= min_prio:
-            return -1
+        curr_active = nvic_get_active()
+        if curr_active != 0 and cls.vectors[curr_active].prio <= min_prio:
+            return 0
 
-        if min_pend != -1:
+        if min_pend != 0:
             cls.pending.remove(min_pend)
 
         return min_pend
@@ -452,7 +447,7 @@ class NVIC():
         cls._push_state() # save context in psp
 
         # NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG needs to be set when enter from thread mode
-        if cls.curr_active == -1:
+        if nvic_get_active() == 0:
             new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG
 
         # When the stack is SP_process, switch to SP_Main
@@ -475,7 +470,6 @@ class NVIC():
         vector = cls.vectors[num]
         vector.pending = False
         vector.active = True
-        cls.curr_active = num
         uc.reg_write(UC_ARM_REG_IPSR, num)
 
         return new_lr
@@ -486,9 +480,10 @@ class NVIC():
         stack recovery and state recovery
         '''
         uc = cls.uc
+        curr_active = nvic_get_active()
 
         if DEBUG_NVIC:
-            print("[*] Interrupt #0x%02x: Returning..."%cls.curr_active)
+            print("[*] Interrupt #0x%02x: Returning..." % curr_active)
 
         # Pop the current stack state
         # When returning to thread mode:
@@ -504,11 +499,13 @@ class NVIC():
         # pop context from psp
         cls._pop_state()
 
+        # update nvic state
+        cls.vectors[curr_active].active = False
+
         if DEBUG_NVIC:
-            print("[+] Interrupt #0x%02x: Return Success!"%cls.curr_active)
+            print("[+] Interrupt #0x%02x: Return Success!" % curr_active)
             print("[+] ----------------------------------")
-        cls.vectors[cls.curr_active].active = False
-        cls.curr_active = nvic_get_active()
+        
 
         return False
 
@@ -518,7 +515,7 @@ class NVIC():
         get a pending vector and active it.
         '''
         ind = cls._find_pending()
-        if ind != -1:
+        if ind != 0:
             if DEBUG_NVIC:
                 print("[*] Interrupt #0x%02x: Activating..."%ind)
             try:

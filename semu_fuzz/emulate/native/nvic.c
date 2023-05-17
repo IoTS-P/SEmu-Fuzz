@@ -393,6 +393,8 @@ static void handler_systick_ctrl_write_cb(uc_engine *uc, uc_mem_type type, uint6
         if (value & 0x1){
             nvic.systick.is_load = true;
             _set_enabled(NUM_SYSTICK);
+            // reset tick_val
+            nvic.systick.tick_val = nvic.systick.reload_val;
 #ifdef DEBUG_NVIC
     printf("############### Enable Systick. reload_val=%u\n", nvic.systick.reload_val);
 #endif

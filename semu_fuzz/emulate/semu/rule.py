@@ -251,11 +251,11 @@ def take_action(actions, rule_type, debug=False):
     debug_info("======> Match rule: {}\n".format(debug), 3)
     # pending IRQ
     irq = actions[0].interrupt
-    if irq != -1 and (nvic_get_pending(irq) == False):# and (nvic_get_active()!= irq):
+    if irq != 0 and (nvic_get_pending(irq) == False):
         debug_info("======> Take Action: IRQ(%d)\n"%(irq-0x10), 3)
         send_pending(RULE.uc, irq)
     dma_irq = actions[0].dma_irq
-    if dma_irq != -1:
+    if dma_irq != 0:
         dma_list = RULE.dma[dma_irq]
         # prevent repeat emit dma
         for dma in dma_list:
@@ -620,9 +620,10 @@ def get_value_from_receive_buffer(data_reg, phaddr, size):
     data_reg.r_size = len(data_reg.r_fifo) * 8
     # if in irq, don't exit, because this data will be used after irq.
     # if in systick, still exit.
-    if data_reg.r_size == 0 and (nvic_get_active() == -1 or nvic_get_active() == 0xf):
-        debug_info("[+] no data in 0x%x, need to exit.\n" % phaddr, 1)
-        do_exit(0)
+    if data_reg.r_size == 0:
+        if nvic_get_active() == 0 or nvic_get_active() == 0xf:
+            debug_info("[+] no data in 0x%x, need to exit.\n" % phaddr, 1)
+            do_exit(0)
     data_reg.r_value = value
     return value
 
@@ -662,7 +663,7 @@ def readHook(uc, access, address, size, value, user_data):
             deal_rule_RWVB(address, 'V')
             deal_rule_RWVB(address, 'B')
             # record the data_reg read in irq
-            if nvic_get_active() != -1 and address not in RULE.data_regs_in_irq:
+            if nvic_get_active() != 0 and address not in RULE.data_regs_in_irq:
                 RULE.data_regs_in_irq.add(address)
                 RULE.data_regs_in_irq_size[address] = size
             debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: True.\n" % (address, value, value, bit_begin, bit_end), 2)
@@ -859,7 +860,7 @@ class RULE():
                     interrupt = int(interrupt_number, 10) + base
                 actions = actions.replace('&{}({})'.format(interrupt_type, interrupt_number), '')
                 return actions, interrupt, is_dma
-            return actions, -1, False # no match
+            return actions, 0, False # no match
 
         def extractEqu(expressions, interrupt, typ = 'trigger', is_dma=False):
             ''' extract Equation form expressions. '''
@@ -877,7 +878,7 @@ class RULE():
                     # if action value is field.
                     f.append('a2_bits')
                 v = dict(zip(f, v))
-                equ = Equation(-1, interrupt) if is_dma else Equation(interrupt, -1)
+                equ = Equation(0, interrupt) if is_dma else Equation(interrupt, 0)
                 # default type is 'A'
                 if 'type' in v.keys():
                     equ.type_eq = v['type'][0]
