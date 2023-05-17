@@ -104,6 +104,10 @@ def nvic_get_active():
     if globs.config.enable_native:
         from ctypes import c_int16
         return c_int16(native_nvic.nvic_get_active()).value
+    NVIC.curr_active = globs.uc.reg_read(UC_ARM_REG_IPSR)
+    if NVIC.curr_active == 0:
+        NVIC.curr_active = -1 # TODO: change to 0
+        return -1
     return NVIC.curr_active
 
 def nvic_get_pending(irq):
@@ -138,15 +142,10 @@ def _nvic_intr_handle(uc, intno, size):
     pc = uc.reg_read(UC_ARM_REG_PC)
     # exit_exception
     if pc >= EXC_RETURN and pc <= (EXC_RETURN|0xf):
-        NVIC.exit_handler(uc, pc)
+        NVIC._exit_exception(pc)
     # svc 2
     elif intno == 2:
         NVIC._enter_exception(0xb)
-        # TODO: check priority
-        #ifndef SKIP_CHECK_SVC_ACTIVE_INTERRUPT_PRIO
-        # if(nvic.active_group_prio <= nvic.ExceptionPriority[EXCEPTION_NO_SVC]):
-        #     do_exit(uc, UC_ERR_EXCEPTION)
-        #endif
     else:
         # Alternatives could be breakpoints and the like, which we do not handle.
         # TODO
@@ -371,6 +370,10 @@ class NVIC():
                 min_prio = priority
                 min_pend = irq
 
+        # don't interrupt when a higher or same priority interrupt active.
+        if cls.curr_active != -1 and cls.vectors[cls.curr_active].prio <= min_prio:
+            return -1
+
         if min_pend != -1:
             cls.pending.remove(min_pend)
 
@@ -419,11 +422,12 @@ class NVIC():
         saved_regs_value = list(struct.unpack(
         cls.pack_prefix + 8 * "I", saved_regs))
 
-        # 3. stack recovery
+        # 3. xpsr recovery
+        xpsr_raw = saved_regs_value[saved_reg_ids.index(UC_ARM_REG_XPSR)]
+        # stack recovery
         sp = uc.reg_read(UC_ARM_REG_SP)
         sp += FRAME_SIZE
-        xpsr_retspr = saved_reg_ids.index(UC_ARM_REG_XPSR)
-        if (saved_regs_value[xpsr_retspr] & (1 << 9)) != 0:
+        if (xpsr_raw & (1 << 9)) != 0:
             sp += 4
         saved_regs_value.append(sp)
 
@@ -441,26 +445,18 @@ class NVIC():
         """
         uc = cls.uc
 
-        # Update nvic state
-        assert (cls.curr_active == -1)
-        vector = cls.vectors[num]
-        vector.pending = False
-        vector.active = True
-        cls.curr_active = num
-
-        cls._push_state()
-
         new_lr = EXC_RETURN
-
-        # TODO: When the stack is SP_main, no way to know whether is in Mode_thread
-        # TODO: Don't know why some system(such as RT-Thread) don't use NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG in SP switch, so just delete it, just use the only one flag 'NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG'
 
         control = uc.reg_read(UC_ARM_REG_CONTROL)
 
-        new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG
+        cls._push_state() # save context in psp
 
-        if (control & 0x2) == 0x2:
+        # NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG needs to be set when enter from thread mode
+        if cls.curr_active == -1:
+            new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG
+
         # When the stack is SP_process, switch to SP_Main
+        if (control & 0x2) == 0x2:
             control ^= 0x2
             uc.reg_write(UC_ARM_REG_CONTROL, control)
             new_lr |= NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG
@@ -475,39 +471,17 @@ class NVIC():
         # Set new LR
         cls.uc.reg_write(UC_ARM_REG_LR, new_lr)
 
-    @classmethod
-    def _exit_exception(cls):
-        """
-        Exiting an exception happend in response to PC being
-        set to an EXC_RETURN value (PC mask 0xfffffff0).
-        During exception return, either the next exception has
-        to be serviced (tail chaining) or the previous processor
-        state (stack frame) has to be restored and user space
-        operation has to be resumed.
-        """
-        
-        # assert(cls.curr_active != -1)
-        cls._pop_state()
-        cls.vectors[cls.curr_active].active = False
-        cls.curr_active = -1
+        # Update nvic state
+        vector = cls.vectors[num]
+        vector.pending = False
+        vector.active = True
+        cls.curr_active = num
+        uc.reg_write(UC_ARM_REG_IPSR, num)
 
-    @classmethod
-    def recalc_prios(cls):
-        '''
-        Re-calculate nvic interrupt prios and indicate whether
-        things have changed.
-        '''
-        highest_pending_prio = 256
-        num_active = 0
-        
-        highest_active_group_prio = 256
-        highest_pending_irq = 0
-
-        # for vector in cls.vectors:
-        #     vector.prio
+        return new_lr
      
     @classmethod
-    def exit_handler(cls, uc, addr):
+    def _exit_exception(cls, addr):
         '''
         stack recovery and state recovery
         '''
@@ -516,23 +490,26 @@ class NVIC():
         if DEBUG_NVIC:
             print("[*] Interrupt #0x%02x: Returning..."%cls.curr_active)
 
-        # TODO: recals_prios();
-
         # Pop the current stack state
         # When returning to thread mode:
-        if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) :
-        # When need to change stack to SP_process:
+        if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG):
+            uc.reg_write(UC_ARM_REG_IPSR, 0) # thead mode means no exception
+            # When need to change stack to SP_process:
             if(addr & NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG):
                 control = uc.reg_read(UC_ARM_REG_CONTROL)
                 if (control & 0x2) != 0x2:
                     control ^= 0x2
                     uc.reg_write(UC_ARM_REG_CONTROL, control)
-        
-        # recovery state
+
+        # pop context from psp
+        cls._pop_state()
+
         if DEBUG_NVIC:
             print("[+] Interrupt #0x%02x: Return Success!"%cls.curr_active)
             print("[+] ----------------------------------")
-        cls._exit_exception()
+        cls.vectors[cls.curr_active].active = False
+        cls.curr_active = nvic_get_active()
+
         return False
 
     @classmethod
@@ -540,25 +517,24 @@ class NVIC():
         '''
         get a pending vector and active it.
         '''
-        if cls.curr_active == -1:
-            ind = cls._find_pending()
-            if ind != -1:
-                if DEBUG_NVIC:
-                    print("[*] Interrupt #0x%02x: Activating..."%ind)
-                try:
-                    cls._enter_exception(ind)
-                except UcError as e:
-                    if e.errno == 6 and DEBUG_NVIC:
-                        if DEBUG_NVIC:
-                            print("[WARN] cannot activate interrupt #%s, because the vtor base hasn't been set."%(hex(ind)))
-                    elif e.errno != 6:  
-                        if DEBUG_NVIC:
-                            print("[WARN] cannot activate interrupt #%s, because %s."%(hex(ind),e))
-                    cls._exit_exception()
-                except Exception as e:
+        ind = cls._find_pending()
+        if ind != -1:
+            if DEBUG_NVIC:
+                print("[*] Interrupt #0x%02x: Activating..."%ind)
+            try:
+                cls._enter_exception(ind)
+            except UcError as e:
+                if e.errno == 6 and DEBUG_NVIC:
                     if DEBUG_NVIC:
-                        print("[WARN] cannot activate interrupt #%s, because %s."%(hex(ind),e))
-                    cls._exit_exception()
+                        print("[WARN] cannot activate interrupt #%s, because the vtor base hasn't been set."%(hex(ind)))
+                elif e.errno != 6:  
+                    if DEBUG_NVIC:
+                        print(f"[WARN] cannot activate interrupt #{hex(ind)}, because {e}.")
+                cls._exit_exception(EXC_RETURN)
+            except Exception as e:
+                if DEBUG_NVIC:
+                    print(f"[WARN] cannot activate interrupt #{hex(ind)}, because {e}.")
+                cls._exit_exception(EXC_RETURN)
 
         return False
     
