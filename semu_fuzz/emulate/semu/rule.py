@@ -223,7 +223,8 @@ def emit_dma(dma):
         if dma.GIF != 'N/A':
             set_field_value(dma.GIF, 1, 'GIF')
         # pend irq.
-        send_pending(RULE.uc, dma.dma_irq + 0x10)
+        if send_pending(RULE.uc, dma.dma_irq + 0x10):
+            debug_info("======> Set Pending: #0x%02x.\n" % dma.dma_irq, 1)
         # set state=half complete.
         dma.state = 2
     # if state=2, active the second dma_irq.
@@ -238,22 +239,26 @@ def emit_dma(dma):
         data_reg.r_fifo = []
         data_reg.r_size = 0
         # pend irq.
-        send_pending(RULE.uc, dma.dma_irq + 0x10)
+        if send_pending(RULE.uc, dma.dma_irq + 0x10):
+            debug_info("======> Set Pending: #0x%02x.\n" % dma.dma_irq, 1)
         # set state=disabled.
         dma.state = 0
     deal_rule_RWVB(peri_addr, 'B')
     return True
 
-def take_action(actions, rule_type, debug=False):
+def take_action(rule, rule_type):
     '''
     take action of rule.
     '''
-    debug_info("======> Match rule: {}\n".format(debug), 3)
+    actions = rule[1]
+    if globs.args.debug_level > 2:
+        debug_info("======> Match rule: {}\n".format(rule[2]), 3)
     # pending IRQ
     irq = actions[0].interrupt
     if irq != 0 and (nvic_get_pending(irq) == False):
         debug_info("======> Take Action: IRQ(%d)\n"%(irq-0x10), 3)
-        send_pending(RULE.uc, irq)
+        if send_pending(RULE.uc, irq):
+            debug_info("======> Set Pending: #0x%02x.\n" % irq, 1)
     dma_irq = actions[0].dma_irq
     if dma_irq != 0:
         dma_list = RULE.dma[dma_irq]
@@ -323,14 +328,15 @@ def deal_rule_O(phaddr=None):
     if phaddr == None:
         for addr, rules in RULE.rules['O'].items():
             for rule in rules:
-                take_action(rule[1], 'O')
+                take_action(rule, 'O')
+                
     else:
         try:
             rules = RULE.rules['O'][phaddr]
         except:
             return
         for rule in rules:
-            take_action(rule[1], 'O')
+            take_action(rule, 'O')
 
 def deal_rule_RWVB(address, rule_type, limit_bits='*'):
     '''
@@ -357,11 +363,7 @@ def deal_rule_RWVB(address, rule_type, limit_bits='*'):
                 break
         # if no break, take action.
         else:
-            if globs.args.debug_level > 2:
-                # log the actions of rule.
-                take_action(rule[1], rule_type, rule[2])
-            else:
-                take_action(rule[1], rule_type)
+            take_action(rule, rule_type)
 
 def deal_rule_L(address, cur_dp_addr=None):
     uc = RULE.uc
@@ -483,8 +485,8 @@ def hardware_write_to_receive_buffer(data_reg, phaddr, value_queue):
     data_reg.r_fifo += value_queue
     data_reg.r_size = len(data_reg.r_fifo) * 8
     # deal_rule_RWVB(phaddr, 'W') # the write rule means the writing of firmware.
-    deal_rule_RWVB(phaddr, 'V') 
     deal_rule_RWVB(phaddr, 'B')
+    deal_rule_RWVB(phaddr, 'V') 
 
 def hardware_write_to_receive_buffer_list(data_regs_list, value):
     '''
@@ -660,8 +662,8 @@ def readHook(uc, access, address, size, value, user_data):
             # the change of receive buffer may match rules.
             deal_rule_O(address)
             deal_rule_flag('random', address)
-            deal_rule_RWVB(address, 'V')
             deal_rule_RWVB(address, 'B')
+            deal_rule_RWVB(address, 'V')
             # record the data_reg read in irq
             if nvic_get_active() != 0 and address not in RULE.data_regs_in_irq:
                 RULE.data_regs_in_irq.add(address)
@@ -735,8 +737,8 @@ def writeHook(uc, access, address, size, value, user_data):
         if value1 != value2:
             changed_bits= different_bits(value1, value2)
             deal_rule_O(address) # once any change, reset by O
-            deal_rule_RWVB(address, 'V', changed_bits) # when value change
             deal_rule_RWVB(address, 'B') # when value change, don't care changed_bits
+            deal_rule_RWVB(address, 'V', changed_bits) # when value change
             
 def blockHook(uc, address, size, user_data):
     # every INTERRUPT_INTERVAL blocks, update flag and write into receive buffer
