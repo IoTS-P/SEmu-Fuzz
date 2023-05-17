@@ -322,7 +322,7 @@ def take_action(rule, rule_type):
             deal_rule_RWVB(action.a1.phaddr, 'V', action.a1.bits)
         # if value hasn't change, but it is in 'B' rule, still need to check the V rule of the address of action again, to deplete the receive buffer.
         elif rule_type == 'B':
-            deal_rule_RWVB(action.a1.phaddr, 'V')
+            deal_rule_RWVB(action.a1.phaddr, 'V', action.a1.bits)
 
 def deal_rule_O(phaddr=None):
     if phaddr == None:
