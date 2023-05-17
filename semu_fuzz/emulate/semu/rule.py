@@ -175,7 +175,7 @@ def set_field_value(field, value, name=''):
     RULE.regs[field.phaddr].value = reg_value
     globs.uc.mem_write(field.phaddr, reg_value.to_bytes(size_, 'little'))
     debug_info("{}\t==> Peripheral set: address: {}, bits: {}, set_value: {}, full_value: {}, size: {}, is_data_reg: False.\n".format(name, hex(field.phaddr), field.bits, value, hex(reg_value), size_), 2)
-    deal_rule_RWVB(field.phaddr, 'V')
+    deal_rules_CA(field.phaddr, ['V'])
 
 
 def compare(a1, eq, a2):
@@ -243,14 +243,15 @@ def emit_dma(dma):
             debug_info("======> Set Pending: #0x%02x.\n" % dma.dma_irq, 1)
         # set state=disabled.
         dma.state = 0
-    deal_rule_RWVB(peri_addr, 'B')
+    deal_rules_CA(peri_addr, ['B'])
     return True
 
-def take_action(rule, rule_type):
+def take_action(rule):
     '''
     take action of rule.
     '''
-    actions = rule[1]
+    actions = rule.actions
+    rule_type = rule.rule_type
     if globs.args.debug_level > 2:
         debug_info("======> Match rule: {}\n".format(rule[2]), 3)
     # pending IRQ
@@ -317,26 +318,15 @@ def take_action(rule, rule_type):
                     # just occur when code has bug
                     print("[-] Code has Bug! Unknown action!")
                     do_exit(-1)
-            # once any change, check rule v
-            deal_rule_RWVB(action.a1.phaddr, 'B', action.a1.bits)
-            deal_rule_RWVB(action.a1.phaddr, 'V', action.a1.bits)
+            deal_rules_CA(action.a1.phaddr, ['B', 'V', 'O'])
         # if value hasn't change, but it is in 'B' rule, still need to check the V rule of the address of action again, to deplete the receive buffer.
         elif rule_type == 'B':
             deal_rule_RWVB(action.a1.phaddr, 'V')
 
-def deal_rule_O(phaddr=None):
-    if phaddr == None:
-        for addr, rules in RULE.rules['O'].items():
-            for rule in rules:
-                take_action(rule, 'O')
-                
-    else:
-        try:
-            rules = RULE.rules['O'][phaddr]
-        except:
-            return
-        for rule in rules:
-            take_action(rule, 'O')
+def deal_rule_O():
+    rules = RULE.rules_by_type['O']
+    for rule in rules:
+        take_action(rule)
 
 def deal_rule_RWVB(address, rule_type, limit_bits='*'):
     '''
@@ -363,7 +353,7 @@ def deal_rule_RWVB(address, rule_type, limit_bits='*'):
                 break
         # if no break, take action.
         else:
-            take_action(rule, rule_type)
+            take_action(rule)
 
 def deal_rule_L(address, cur_dp_addr=None):
     uc = RULE.uc
@@ -629,6 +619,34 @@ def get_value_from_receive_buffer(data_reg, phaddr, size):
     data_reg.r_value = value
     return value
 
+def check_triggers(triggers):
+    for trigger in triggers:
+        # get a1.value
+        value1 = get_field_value(trigger.a1)
+        # get a2.value
+        if trigger.type_a2 == 'F':
+            value2 = get_field_value(trigger.a2_field)
+        elif trigger.type_a2 == 'V':
+            value2 = trigger.a2_value
+        # a2.value == '*' then don't compare
+        if value2 != "*" and not compare(value1, trigger.eq, value2):
+            return False
+    # if no break, rule check success.
+    return True
+
+def deal_rules_CA(address, rule_types, limit_bits='*'):
+    '''
+    deal with CA rules of one addr.
+    '''
+    rules = RULE.rules_by_paddr[address]
+    # check rule in the order in rule file
+    for rule in rules:
+        if rule.rule_type in rule_types:
+            # limit the rule check bits, to reduce the rule check
+            if limit_bits != '*' and not len([trigger for trigger in rule.triggers if trigger.a1.phaddr == address and len((set(trigger.a1.bits) & set(limit_bits)))]):
+                continue
+            if check_triggers(rule.triggers):
+                take_action(rule)
 
 def readHook(uc, access, address, size, value, user_data):
     '''
@@ -639,12 +657,12 @@ def readHook(uc, access, address, size, value, user_data):
         address_raw = address
         address, bit_shift = bit_band(address)
         # TODO: the code below hasn't been executed and tested.
+        # take read action
+        deal_rule_flag('random', address)
+        deal_rules_CA(address, ['R', 'B', 'V', 'O'])
         # get value and the bit of value
         value_band = RULE.regs[address].value
         value = (value_band >> bit_shift) & 1
-        # match read(R) rule.
-        deal_rule_flag('random', address)
-        deal_rule_RWVB(address, 'R')
         # write back to the address_raw
         uc.mem_write(address_raw, value.to_bytes(4, 'little'))
         debug_info("==> Peripheral read: address: 0x%x, value: %d; bitband address: 0x%x, bit: %d, value: 0x%x.\n" % (address_raw, value, address, bit_shift, value_band), 2)
@@ -653,34 +671,32 @@ def readHook(uc, access, address, size, value, user_data):
     addr_mapped = correct_addr_to_map(address, size<<3, 'whole')
     for mapped in addr_mapped:
         address, bit_begin, bit_end = mapped
-        # for data regs
+        # take read action
         if address in RULE.data_regs:
             data_reg = RULE.regs[address].value
             # only get non-reserved fields
             size = RULE.regs[address].data_width >> 3
             value = get_value_from_receive_buffer(data_reg, address, size)
-            # the change of receive buffer may match rules.
-            deal_rule_O(address)
-            deal_rule_flag('random', address)
-            deal_rule_RWVB(address, 'B')
-            deal_rule_RWVB(address, 'V')
             # record the data_reg read in irq
             if nvic_get_active() != 0 and address not in RULE.data_regs_in_irq:
                 RULE.data_regs_in_irq.add(address)
                 RULE.data_regs_in_irq_size[address] = size
+            # write the saved value into uc.
+            uc.mem_write(address, value.to_bytes(size, 'little'))
+            is_data_reg = True
+        else:
+            deal_rule_flag('random', address)
+            is_data_reg = False
+        # match read R and other rule.
+        deal_rules_CA(address, ['R', 'B', 'V', 'O'])
+        # final debug info
+        if is_data_reg:
             debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: True.\n" % (address, value, value, bit_begin, bit_end), 2)
-        # for not data regs
         else:
             value = RULE.regs[address].value
             size = RULE.regs[address].width >> 3
-            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, size: (%d, %d), is_data_reg: False.\n" % (address, value, bit_begin, bit_end), 2)
-        # write the saved value into uc.
-        uc.mem_write(address, value.to_bytes(size, 'little'))
-        # match read(R) rule.
-        deal_rule_flag('random', address)
-        deal_rule_RWVB(address, 'R')
+            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: False.\n" % (address, value, value, bit_begin, bit_end), 2)
             
-
 def writeHook(uc, access, address, size, value, user_data):
     '''
     hook firmware write to peripheral.
@@ -691,7 +707,8 @@ def writeHook(uc, access, address, size, value, user_data):
         address_raw = address
         address, bit_shift = bit_band(address)
         # TODO: the code below hasn't been executed and tested.
-        # get value
+        # take action
+        take_action(RULE_SEmu(rule_type='O', triggers=))
         value1 = RULE.regs[address].value
         value2 = set_one_bit(value1, bit_shift, value)
         # write to reg
@@ -700,11 +717,10 @@ def writeHook(uc, access, address, size, value, user_data):
         uc.mem_write(address, value2.to_bytes(size, 'little'))
         # deal with rule
         deal_rule_flag('random', address)
-        deal_rule_RWVB(address, 'W') # whether value change or not
+        deal_rules_CA(address, ['W'])
         if value1 != value2:
             changed_bits= different_bits(value1, value2)
-            deal_rule_O(address) # once any change, reset by O
-            deal_rule_RWVB(address, 'V', changed_bits) # when value change
+            deal_rules_CA(address, ['V', 'O', 'B'], changed_bits) # when value change
         debug_info("==> Peripheral write: address: 0x%x, value: %d; bitband address: 0x%x, bit: %d, value: 0x%x.\n" % (address_raw, value, address, bit_shift, value2), 2)
         return
     # Correct addr and value to addr_map.
@@ -716,6 +732,8 @@ def writeHook(uc, access, address, size, value, user_data):
         size = (bit_end - bit_begin + 1) >> 3
         value = int.from_bytes(value_bytes[0:size],'little')
         value_bytes = value_bytes[size:]
+        # firmware write change
+        changed_bits = []
         # data_regs
         if address in RULE.data_regs: 
             data_reg = RULE.regs[address].value
@@ -723,22 +741,21 @@ def writeHook(uc, access, address, size, value, user_data):
             value2 = set_some_bits(value1, bit_begin, bit_end, value)
             # write to transmit buffer
             firmware_write_to_transmit_buffer(data_reg, address, value2)
-            value2 = -1
+            changed_bits= "*"
+            is_data_reg = True
         # not data_regs
         else: 
             value1 = RULE.regs[address].value
             value2 = set_some_bits(value1, bit_begin, bit_end, value)
             # write to reg
             RULE.regs[address].value = value2
-            uc.mem_write(address, value2.to_bytes(RULE.regs[address].width>>3, 'little'))
-            debug_info("==> Peripheral write: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: False.\n" % (address, value2, value, bit_begin, bit_end), 2)
-        deal_rule_flag('random', address)
-        deal_rule_RWVB(address, 'W') # whether value change or not
-        if value1 != value2:
             changed_bits= different_bits(value1, value2)
-            deal_rule_O(address) # once any change, reset by O
-            deal_rule_RWVB(address, 'B') # when value change, don't care changed_bits
-            deal_rule_RWVB(address, 'V', changed_bits) # when value change
+            is_data_reg = False
+        debug_info("==> Peripheral write: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: %d.\n" % (address, value2, value, bit_begin, bit_end, is_data_reg), 2)
+        # rule deal change
+        deal_rule_flag('random', address)
+        deal_rules_CA(address, ['W']) # whether value change or not
+        deal_rules_CA(address, ['O', 'B', 'V'], changed_bits) # when value change
             
 def blockHook(uc, address, size, user_data):
     # every INTERRUPT_INTERVAL blocks, update flag and write into receive buffer
@@ -787,14 +804,8 @@ class RULE():
     data_regs_in_irq = set() # paddr used in interrupt
     data_regs_in_irq_size = {} # size used in interrupt
     # ca_rules = {} # paddr->
-    rules = {
-        'W':{},
-        'R':{},
-        'B':{},
-        'V':{},
-        'L':{},
-        'O':{}
-    } # type->{paddr->(triggers, actions)}
+    rules_by_paddr = {} # type->{paddr->RULE_SEmu}
+    rules_by_type = {} # type->{rule_type->RULE_SEmu}
     irq = []
     dma_irq = []
     # paddr->flag
@@ -909,13 +920,21 @@ class RULE():
             return res
 
         def recordRule(paddr, rule):
-            ''' record rule with two keys, rule_type and paddr. '''
+            ''' record rule with paddr and rule_type '''
             rule_type = rule[0][0].type_eq
+            rule = RULE_SEmu(rule_type, *rule)
+            # record by paddr
             try:
-                if rule != ru.rules[rule_type][paddr][-1]: # avoid to add one rule twice
-                    ru.rules[rule_type][paddr].append(rule)
+                if rule != ru.rules_by_paddr[paddr][-1]: # avoid to add one rule twice
+                    ru.rules_by_paddr[paddr].append(rule)
             except:
-                ru.rules[rule_type][paddr] = [rule]
+                ru.rules_by_paddr[paddr] = [rule]
+            # record by type
+            try:
+                if rule != ru.rules_by_type[rule_type][-1]: # avoid to add one rule twice
+                    ru.rules_by_type[rule_type].append(rule)
+            except:
+                ru.rules_by_type[rule_type] = [rule]
 
         def readInit(lines):
             ''' the first part of rule: paddr init. '''

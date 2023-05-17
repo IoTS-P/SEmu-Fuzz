@@ -54,3 +54,10 @@ class DMA:
         self.TCIF = TCIF
         self.GIF = GIF
         self.state = state # 0: disable; 1: not start yet; 2: half complete.
+
+class RULE_SEmu:
+    def __init__(self, rule_type, triggers, actions, debug=False):
+        self.rule_type = rule_type
+        self.triggers = triggers
+        self.actions = actions
+        self.debug = debug
