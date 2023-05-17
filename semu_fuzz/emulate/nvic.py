@@ -62,8 +62,7 @@ def send_pending(uc, irq=0, rand=False):
     if rand is True, pending a rand irq.
     '''
     if globs.config.enable_native:
-        native_nvic.send_pending(uc._uch, irq)
-        return
+        return native_nvic.send_pending(uc._uch, irq)
     # if irq is not set, choice one to pending
     if irq == 0:
         # if no enabled irq, just return
@@ -84,6 +83,7 @@ def send_pending(uc, irq=0, rand=False):
             NVIC.last_active_index = index
     # use NVIC to set pending
     NVIC.set_pending(irq)
+    return True
 
 def nvic_get_enabled():
     '''
