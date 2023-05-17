@@ -25,7 +25,7 @@ class DataReg:
         self.t_value = 0
 
 class Equation:
-    def __init__(self, interrupt=-1, dma_irq=-1):
+    def __init__(self, interrupt=0, dma_irq=0):
         self.type_eq = 'A' # A: action; R, W, B, V, O... : trigger_type
         self.a1 = Field(0,0,'*')
         self.eq = '*' # = ; >;  <;  >=; <=
