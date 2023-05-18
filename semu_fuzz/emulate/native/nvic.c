@@ -51,19 +51,13 @@ static void _remove_enabled(uint16_t irq){
     }
 }
 
-/* Find the next pending interrupt to acknowledge (activate) */
-static int16_t _find_pending(){
-    if(nvic.pending[0] != 0){
-        uint16_t irq = nvic.pending[0];
-        _remove_pending(irq, 1);
-        return irq;
-    }
-    return -1;
-}
-
 static bool _is_enabled(uint16_t ind){
     /* Detect whether the irq is enabled */
-    // TODO: PRIMASK, BASEPRI
+    // TODO: BASEPRI
+    uint32_t primask;
+    uc_reg_read(nvic.uc, UC_ARM_REG_PRIMASK, &primask);
+    if(primask & 0x1 && ind != NUM_HardFault && ind != NUM_NMI && ind != NUM_Reset)
+        return false;
     if(ind <= 0x10)
         return true;
     for(int i=0; nvic.enabled[i]; ++i)
@@ -73,6 +67,37 @@ static bool _is_enabled(uint16_t ind){
     printf("[WARN] Interrupt #0x%02x: pended but not enabled.\n", ind);
 #endif
     return false;
+}
+
+/* Find the next pending interrupt to acknowledge (activate) */
+static int16_t _find_pending(){
+    if(nvic.pending[0] == 0)
+        return 0;
+    
+    uint32_t curr_active;
+    uint32_t min_prio = 0xffffffff;
+    uint16_t min_pend = 0;
+
+    for(int i=0; nvic.pending[i]; ++i){
+        uint16_t irq = nvic.pending[i];
+        uint32_t prio = nvic.vectors[irq].prio;
+        if(prio < min_prio && _is_enabled(irq)){
+            min_prio = prio;
+            min_pend = irq;
+        }
+    }
+
+    // don't interrupt when a higher or same priority interrupt active.
+    curr_active = nvic_get_active();
+    if(curr_active != 0 && min_prio >= nvic.vectors[curr_active].prio)
+        return 0;
+
+    if (min_pend != 0) {
+        _remove_pending(min_pend, 1);
+        
+    }
+
+    return min_pend;
 }
 
 void _push_state(uc_engine *uc)
@@ -123,20 +148,45 @@ void _pop_state(uc_engine *uc) {
     }
 }
 
-static void _exit_exception() {
+static bool _exit_exception(uc_engine *uc, uint32_t addr) {
     /*
-    Exiting an exception happend in response to PC being
-    set to an EXC_RETURN value (PC mask 0xfffffff0).
-    During exception return, either the next exception has
-    to be serviced (tail chaining) or the previous processor
-    state (stack frame) has to be restored and user space
-    operation has to be resumed.
-    */
-    _pop_state(nvic.uc);
-    nvic.vectors[nvic.curr_active].active = false;
-    nvic.curr_active = -1;
-}
+     * stack recovery and state recovery
+     */
+    uint16_t curr_active;
+    curr_active = nvic_get_active();
 
+#ifdef DEBUG_NVIC
+    printf("[*] Interrupt #0x%02x: Returning...\n", curr_active);
+#endif
+
+    // Pop the current stack state
+    // When returning to thread mode:
+    if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) {
+        uint16_t irq = 0;
+        uc_reg_write(uc, UC_ARM_REG_IPSR, &irq); // thead mode means no exception
+        // When need to change stack to SP_process:
+        if (addr & NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG) {
+            uint32_t control;
+            uc_reg_read(uc, UC_ARM_REG_CONTROL, &control);
+            if ((control & 0x2) != 0x2) {
+                control ^= 0x2;
+                uc_reg_write(uc, UC_ARM_REG_CONTROL, &control);
+            }
+        }
+    }
+
+    // pop context from psp
+    _pop_state(nvic.uc);
+
+    // update nvic state
+    nvic.vectors[curr_active].active = false;
+
+#ifdef DEBUG_NVIC
+    printf("[+] Interrupt #0x%02x: Return Success!\n", curr_active);
+    printf("[+] ----------------------------------\n");
+#endif
+    return false;
+}
 
 static void _enter_exception(uint16_t num) {
     /*
@@ -145,24 +195,16 @@ static void _enter_exception(uint16_t num) {
     */
     uc_engine* uc = nvic.uc;
 
-    // Update NVIC state
-    if(nvic.curr_active != -1){
-        perror("[NVIC ERROR] enter_exception when another irq active.\n");
-        exit(-1);
-    }
-    nvic.vectors[num].pending = false;
-    nvic.vectors[num].active = true;
-    nvic.curr_active = num;
-
     _push_state(uc);
 
     uint32_t new_lr = EXC_RETURN;
 
-    // TODO: When the stack is SP_main, no way to know whether is in Mode_thread
     uint32_t control;
     uc_reg_read(uc, UC_ARM_REG_CONTROL, &control);
 
-    new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG;
+    // NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG needs to be set when enter from thread mode
+    if(nvic_get_active() == 0)
+        new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG;
 
     if ((control & 0x2) == 0x2) {
         // When the stack is SP_process, switch to SP_Main
@@ -176,7 +218,7 @@ static void _enter_exception(uint16_t num) {
     uc_err ret = uc_mem_read(uc, nvic.vtor + num * PTR_SIZE, &isr, sizeof(isr));
 
     if(ret != UC_ERR_OK){
-        _exit_exception();
+        _exit_exception(uc, EXC_RETURN);
 #ifdef DEBUG_NVIC
     if(ret == 6){
         printf("[WARN] Interrupt 0x%02x: Failed to enter, because because the vtor base hasn't been set.\n", num);
@@ -191,59 +233,28 @@ static void _enter_exception(uint16_t num) {
     // Set new LR
     uc_reg_write(uc, UC_ARM_REG_LR, &new_lr);
 
+    // Update NVIC state
+    nvic.vectors[num].pending = false;
+    nvic.vectors[num].active = true;
+    uc_reg_write(uc, UC_ARM_REG_IPSR, &num);
+
 #ifdef DEBUG_NVIC
     printf("[+] Interrupt #0x%02x: Redirect to isr: 0x%08x\n", num, isr);
 #endif
 }
 
-static bool exit_handler(uc_engine *uc, uint32_t addr) {
-    /*
-     * stack recovery and state recovery
-     */
-#ifdef DEBUG_NVIC
-    printf("[*] Interrupt #0x%02x: exit_handler...\n", nvic.curr_active);
-#endif
-    // TODO: recals_prios();
-
-    // Pop the current stack state
-    // When returning to thread mode:
-    if (addr & NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG) {
-    // When need to change stack to SP_process:
-        if (addr & NVIC_INTERRUPT_ENTRY_LR_PSPSWITCH_FLAG) {
-            uint32_t control;
-            uc_reg_read(uc, UC_ARM_REG_CONTROL, &control);
-            if ((control & 0x2) != 0x2) {
-                control ^= 0x2;
-                uc_reg_write(uc, UC_ARM_REG_CONTROL, &control);
-            }
-        }
-    }
-#ifdef DEBUG_NVIC
-    printf("[+] Interrupt #0x%02x: Return Success!\n", nvic.curr_active);
-    printf("[+] ----------------------------------\n");
-#endif
-    // recovery state
-    _exit_exception();
-    return false;
-}
-
 static void check_pending(){
     /* get a pending vector and active it. */
-    if(nvic.curr_active == -1){
-        int16_t ind = _find_pending();
-        if(ind != -1 && _is_enabled(ind)){
+    uint16_t ind = _find_pending();
+    if(ind !=0){
 #ifdef DEBUG_NVIC
-            printf("[*] Interrupt #0x%02x: Activating...\n", ind);
+        printf("[*] Interrupt #0x%02x: Activating...\n", ind);
 #endif
-            _enter_exception(ind);
-        }
+        _enter_exception(ind);
     }
 }
 
 /*------------- User Function of nvic.c -------------*/
-
-/* when current irq is not 'irq', pending 'irq',
- * if irq is not set, pending one in order. */
 
 // get the value of enabled irq list of NVIC
 uint16_t* nvic_get_enabled() {
@@ -251,8 +262,10 @@ uint16_t* nvic_get_enabled() {
 }
 
 // get the value of current active irq of NVIC
-int16_t nvic_get_active() {
-    return nvic.curr_active;
+uint16_t nvic_get_active() {
+    uint32_t curr_active;
+    uc_reg_read(nvic.uc, UC_ARM_REG_IPSR, &curr_active);
+    return curr_active;
 }
 
 // get the value of pending irq list of NVIC
@@ -260,9 +273,11 @@ bool nvic_get_pending(uint16_t irq) {
     return nvic.vectors[irq].pending;
 }
 
+/* when current irq is not 'irq', pending 'irq',
+ * if irq is not set, pending one in order. */
 void send_pending(uc_engine* uc, uint16_t irq){
     // if irq is not set, choice one in order to pending
-    if(irq == -1){
+    if(irq == 0){
         // if no enabled irq, just return
         if(!nvic.enabled[0])
             return;
@@ -276,8 +291,6 @@ void send_pending(uc_engine* uc, uint16_t irq){
         irq = nvic.enabled[index];
         nvic.last_active_index = index;
     }
-    // // if curr_active is not irq, send pending, to prevent repeat active
-    // if (nvic.curr_active != irq) {
     // use NVIC to set pending
     _set_pending(irq);
 }
@@ -383,6 +396,15 @@ static void handler_state_write_cb(uc_engine *uc, uc_mem_type type, uint64_t add
     }
 }
 
+static void handler_nvic_ip_write_cb(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data){
+    /* hook when write nvic interrupt priority reg, used to update priority */
+    uint16_t irq = address - NVIC_IP_BASE + 0x10; // not for exception
+    nvic.vectors[irq].prio = value;
+#ifdef DEBUG_NVIC
+        printf("############### Setting nvic #0x{%02x}.priority to {:%x}", irq, value);
+#endif
+}
+
 static void handler_systick_ctrl_write_cb(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data){
     /* hook when write systick_ctrl reg,
      * SysTick is only concerned with writing the 3 lowest bits: ENABLE, TICKINT, CLKSOURCE. */
@@ -418,23 +440,15 @@ static void handler_nvic_intr_cb(uc_engine *uc, uint32_t intno, void *user_data)
     if address in lr shadow(0xfffffff0), is exit exception. 
     elif intno == 2, is syscall.
     */
-#ifdef DEBUG_NVIC
-    printf("[*] Interrupt #0x%02x: handler_nvic_intr_cb...\n", nvic.curr_active);
-#endif
     uint32_t pc;
     uc_reg_read(uc, UC_ARM_REG_PC, &pc);
     // exit_exception
     if (pc >= EXC_RETURN && pc <= (EXC_RETURN|0xf)) {
-        exit_handler(uc, pc);
+        _exit_exception(uc, pc);
     }
     // svc 2
     else if (intno == 2) {
         _enter_exception(0xb);
-        // TODO: check priority
-        //ifndef SKIP_CHECK_SVC_ACTIVE_INTERRUPT_PRIO
-        // if(nvic.active_group_prio <= nvic.ExceptionPriority[EXCEPTION_NO_SVC]):
-        //     do_exit(uc, UC_ERR_EXCEPTION)
-        //endif
     }
     else {
         // Alternatives could be breakpoints and the like, which we do not handle.
@@ -461,7 +475,7 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
         nvic.vectors[i].pending = false;
         nvic.vectors[i].active = false;
     }
-    // init priority of vectors
+    // init special priority of vectors
     nvic.vectors[NUM_Reset].prio = -3;
     nvic.vectors[NUM_NMI].prio = -2;
     nvic.vectors[NUM_HardFault].prio = -1;
@@ -486,6 +500,10 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
     uc_hook handler_systick_ctrl_write;
     if(enable_systick)
         uc_hook_add(uc, &handler_systick_ctrl_write, UC_HOOK_MEM_WRITE, handler_systick_ctrl_write_cb, NULL, SYSTICK_CTRL, SYSTICK_CTRL + 3);
+
+    // Listen for changes to NVIC_IP
+    uc_hook handler_nvic_ip_write;
+    uc_hook_add(uc, &handler_nvic_ip_write, UC_HOOK_MEM_WRITE, handler_nvic_ip_write_cb, NULL, NVIC_IP_BASE, NVIC_IP_BASE + (int)(num_vecs) - 1);
             
     // Listen for interrupt return or SVC
     uc_hook handler_nvic_intr;

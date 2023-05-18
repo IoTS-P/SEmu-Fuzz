@@ -24,6 +24,7 @@
 #define ICPR_BASE 0xE000E280 // interrupt clear pending reg
 #define ICSR_BASE 0xE000ED04 // interrupt control and state reg
 #define VTOR_BASE 0xE000ED08 // vector table offset reg
+#define NVIC_IP_BASE 0xE000E400 // interrupt priority
 
 #define FRAME_SIZE 0x20
 #define PTR_SIZE 4
@@ -55,8 +56,8 @@ typedef struct {
     uint32_t vtor;
     uint32_t icsr;
     uint16_t num_vecs;
-    int16_t curr_active; // current active vector
-    int16_t last_active_index; // last active vector
+    uint16_t curr_active; // current active vector
+    uint16_t last_active_index; // last active vector
     uint16_t enabled[MAX_VECTORS_NUM]; // enabled list
     uint16_t pending[MAX_PENDING_NUM]; // pending list
 } NVIC;
@@ -79,8 +80,12 @@ static uint32_t *saved_reg_ptrs[NUM_SAVED_REGS] = {
 };
 
 static NVIC nvic = {
-    .curr_active = -1,
-    .last_active_index = -1,
+    .last_active_index = 0,
     .enabled = {0},
     .pending = {0}
 };
+
+uint16_t* nvic_get_enabled();
+uint16_t nvic_get_active();
+bool nvic_get_pending(uint16_t irq);
+void send_pending(uc_engine* uc, uint16_t irq);
