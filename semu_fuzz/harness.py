@@ -3,7 +3,7 @@ from .configuration import args, config
 from .emulate import uc, nvic
 from .log import debug, fuzz_stat
 from .emulate.semu.rule import rules_configure
-
+from .handlers import reset_func_handler
 import gc
 
 # for debug when haven't install this pkg.
@@ -31,6 +31,13 @@ def main():
         nvic.nvic_configure(uc, 256, 0x8000000)
     else:
         nvic.nvic_configure(uc, 256, 0x0)
+
+    # configure handler
+    if config.symbols != None:
+        reset_func = config.handlers.keys()
+        for addr, func_name in config.symbols.items():
+            if func_name in reset_func:
+                reset_func_handler(uc, addr, config.handlers[func_name])
 
     # configure rule
     rules_configure(uc, globs.config.rules)

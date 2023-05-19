@@ -20,7 +20,8 @@ default_config = Namespace(
     enable_native=True, # True if your want to use c 
     enable_bitband=True,  # note: bitband used only when Cortex M3 and M4, so if not, set it False
     enable_systick=True,
-    systick_reload=globs.INTERRUPT_INTERVAL  # the block interval of systick
+    systick_reload=globs.INTERRUPT_INTERVAL,  # the block interval of systick
+    handlers={} # the functions handlers to be reset
 )
 
 def parse_config():

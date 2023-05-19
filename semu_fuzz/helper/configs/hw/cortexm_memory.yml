@@ -6,3 +6,9 @@ memory_map:
   nvic: {base_addr:  0xe0000000, size: 0x10000000, permissions: rw-}
   irq_ret: {base_addr: 0xfffff000, size: 0x1000, permissions: rwx} 
 initial_sp: 0x20014000
+
+handlers:
+  HAL_Delay: do_return
+  Delay: do_return
+  wait: do_return
+  wait_us: do_return

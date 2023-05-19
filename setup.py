@@ -50,5 +50,5 @@ setup(
         'build': Build
     },
     include_package_data=True,
-    package_data={'semu_fuzz': get_all_files('semu_fuzz', 'emulate', "configuration", "helper", "log", "fuzz")},
+    package_data={'semu_fuzz': get_all_files('semu_fuzz', 'emulate', "configuration", "helper", "log", "fuzz", "handlers")},
 )
