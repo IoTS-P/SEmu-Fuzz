@@ -4,6 +4,7 @@ from unicorn import *
 from unicorn.arm_const import *
 import sys
 import os
+import signal
 
 def do_exit(status, kill_signal=-1):
     '''
@@ -27,9 +28,8 @@ def do_exit(status, kill_signal=-1):
 def force_crash(uc_error):
     '''
     Be called to indicate to the fuzzer that a crash occurred during emulation.
-    Used if globs.enable_fuzz = True.
+    Used if globs.emulate_mode='fuzz' = True.
     '''
-    from .exit import do_exit
     mem_errors = [
         UC_ERR_READ_UNMAPPED, UC_ERR_READ_PROT, UC_ERR_READ_UNALIGNED,
         UC_ERR_WRITE_UNMAPPED, UC_ERR_WRITE_PROT, UC_ERR_WRITE_UNALIGNED,
