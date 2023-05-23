@@ -44,3 +44,32 @@ def yaml_load(path):
         content = yaml.load(fp, Loader=yaml.FullLoader)
     return content
 
+from . import globs
+
+def load_path(path): 
+    ''' load file path and return content ''' 
+    path = get_realpath(globs.args.config_file, path) 
+    if not os.path.exists(path):
+        print("[-] Rule Configure Error! File Not Exists: %s" % path)
+        do_exit(-1)
+    with open(path, 'r') as fp:
+        return fp.read()
+
+import subprocess
+from .log.debug import debug_info
+
+import subprocess
+
+def run_task(command, task_id, timeout=10):
+    print("[*] %05d Start Command: %s" % (task_id, command))
+
+    try:
+        subprocess.run(command, shell=True, check=True, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except subprocess.CalledProcessError as e:
+        print("[-] %05d Process returned non-zero exit code: %s" % (task_id, e))
+        return False
+    except subprocess.TimeoutExpired:
+        print("[-] %05d Process timed out. Killing process..." % task_id)
+        return False
+
+    return True

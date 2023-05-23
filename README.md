@@ -116,7 +116,7 @@ Note: If you install this package in virtualenv, please run `workon semu` before
 ### semu-fuzz
 
 ```bash
-usage: semu-fuzz [-h] [-s] [-d DEBUG_LEVEL] [-l INSTR_LIMIT] input_file config_file
+usage: semu-fuzz [-h] [-s STAT] [-d DEBUG_LEVEL] [-l INSTR_LIMIT] input_file config_file
 ```
 
 You can use `semu-fuzz -h` for the details.
@@ -127,9 +127,9 @@ For more information about the configuration file, please refer to the [docs/con
 
 In addition to the required arguments, `semu-fuzz` provides several optional arguments that can be used to customize the behavior of the tool. These include:
 
-- `-h` or `--help`: Displays the help message and exits
-- `-s` or `--stat`: Enables recording of new blocks created by the input file
-- `-d DEBUG_LEVEL` or `--debug_level DEBUG_LEVEL`: Specifies the level of debug information printed during execution, with a range of 0 (disables debug) to 3 (maximum debug)
+- `-h` or `--help`: Displays the help message and exits.
+- `-s STAT` or `--stat STAT`: Stat new blocks created by input file in a dir.
+- `-d DEBUG_LEVEL` or `--debug_level DEBUG_LEVEL`: Specifies the level of debug information printed during execution, with a range of 0 (disables debug) to 3 (maximum debug).
 - `-l INSTR_LIMIT` or `--instr-limit INSTR_LIMIT`: Specifies the maximum number of instructions to execute. The default is 30,000,000, and setting the limit to 0 disables it.
 
 ### semu-fuzz-helper

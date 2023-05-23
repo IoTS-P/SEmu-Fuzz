@@ -22,7 +22,7 @@ def _hook_bb(uc, address, size, user_data):
 
 def stat_configure():
     global stat_file_list, visit_block, valid_block
-    stat_file_list = log_configure("stat_output", stat_file_list, False)
+    stat_file_list = log_configure(globs.args.stat, stat_file_list, False)
     # add stat hook
     globs.uc.hook_add(UC_HOOK_CODE, _hook_bb)
     # get valid block (necessary)
@@ -43,4 +43,3 @@ def stat_visit_block():
 
 def stat_exit():
     stat_visit_block()
-        

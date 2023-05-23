@@ -4,7 +4,7 @@ uc = None
 config_dir = ""
 block_count = 0
 user_input = []
-
+tool_name = 'semu-fuzz'
 
 #-- parameters in configuration --#
 DEFAULT_BASIC_BLOCK_LIMIT = 30000000
