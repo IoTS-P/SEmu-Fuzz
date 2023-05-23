@@ -94,7 +94,7 @@ def stat(base_configs, duration):
                 task_id = 0
                 for command in commands:
                     # add this task into thread pool
-                    future = pool.submit(run_task, command, task_id, 600)
+                    future = pool.submit(run_task, command, task_id, 60)
                     futures.append(future)
                     task_id += 1
 
@@ -105,11 +105,12 @@ def stat(base_configs, duration):
                     results.append(result)
             
                 _dump_new_blocks(unique_stat_path)
-            
-                print("[+] All the files in the output queue have been processed!")
-                # draw picture with 'new_blocks.txt'
-                draw(unique_stat_path, result_index, duration * 3600)
 
                 result_index += 1
+            
+            print("[+] All the files in the output queue have been processed!")
+            # draw picture with 'new_blocks.txt'
+            draw(stat_path, len(dirs), duration * 3600)
+
         except Exception as e:
             print("[-] Failed! {}".format(e))
