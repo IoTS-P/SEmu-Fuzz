@@ -647,7 +647,7 @@ def readHook(uc, access, address, size, value, user_data):
         deal_rule_RWVB(address, 'R')
         # write back to the address_raw
         uc.mem_write(address_raw, value.to_bytes(4, 'little'))
-        debug_info("==> Peripheral read: address: 0x%x, value: %d; bitband address: 0x%x, bit: %d, value: 0x%x.\n" % (address_raw, value, address, bit_shift, value_band), 2)
+        debug_info("==> Peripheral read: address: 0x%x, value: %d; bitband address: 0x%x, bit: %d, value: 0x%x.pc: %s.\n" % (address_raw, value, address, bit_shift, value_band, hex(uc.reg_read(UC_ARM_REG_PC))), 2)
         return
     # correct address to the address map
     addr_mapped = correct_addr_to_map(address, size<<3, 'whole')
@@ -668,12 +668,12 @@ def readHook(uc, access, address, size, value, user_data):
             if nvic_get_active() != 0 and address not in RULE.data_regs_in_irq:
                 RULE.data_regs_in_irq.add(address)
                 RULE.data_regs_in_irq_size[address] = size
-            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: True.\n" % (address, value, value, bit_begin, bit_end), 2)
+            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, bits_value: 0x%x, bits: (%d, %d), is_data_reg: True, pc: %s.\n" % (address, value, value, bit_begin, bit_end, hex(uc.reg_read(UC_ARM_REG_PC))), 2)
         # for not data regs
         else:
             value = RULE.regs[address].value
             size = RULE.regs[address].width >> 3
-            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, size: (%d, %d), is_data_reg: False.\n" % (address, value, bit_begin, bit_end), 2)
+            debug_info("==> Peripheral read: address: 0x%x, value: 0x%x, size: (%d, %d), is_data_reg: False.pc: %s\n" % (address, value, bit_begin, bit_end, hex(uc.reg_read(UC_ARM_REG_PC))), 2)
         # write the saved value into uc.
         uc.mem_write(address, value.to_bytes(size, 'little'))
         # match read(R) rule.
