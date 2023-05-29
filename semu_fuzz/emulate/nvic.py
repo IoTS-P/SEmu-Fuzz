@@ -51,7 +51,7 @@ def nvic_configure(uc, num_vecs=256, initial_vtor=0):
     if globs.config.enable_native:
         global native_nvic
         native_nvic = load_lib(os.path.join(os.path.dirname(__file__), 'native/nvic.so'))
-        native_nvic.configure(uc._uch, num_vecs, initial_vtor, globs.config.enable_systick, globs.INTERRUPT_INTERVAL)
+        native_nvic.configure(uc._uch, num_vecs, initial_vtor, globs.config.enable_systick, globs.config.systick_reload)
         return
     NVIC.configure(uc, num_vecs, initial_vtor)
 
@@ -65,22 +65,28 @@ def send_pending(uc, irq=0, rand=False):
         return native_nvic.send_pending(uc._uch, irq)
     # if irq is not set, choice one to pending
     if irq == 0:
+        enabled_list = sorted(list(NVIC.enabled))
+        if 0xf in enabled_list:
+            enabled_list.remove(0xf)
         # if no enabled irq, just return
-        if len(NVIC.enable) == 0:
+        if len(enabled_list) == 0:
             return
         # if rand is True, pending a rand irq
         if rand:
-            irq = choice(NVIC.enabled)
-            NVIC.last_active_index = NVIC.enabled.index(irq)
+            irq = choice(enabled_list)
+            NVIC.last_active_index = enabled_list.index(irq)
         # if rand is False, pending one in order
         else:
             index = NVIC.last_active_index + 1
             # if this irq is the final one, back to the first one 
-            if index >= len(NVIC.enabled):
+            if index >= len(enabled_list):
                 index = 0
             # set the next irq
-            irq = NVIC.enabled[index]
+            irq = enabled_list[index]
             NVIC.last_active_index = index
+    # if irq is in disable_irqs, just return
+    if (irq-16) in globs.config.disable_irqs:
+        return False
     # use NVIC to set pending
     NVIC.set_pending(irq)
     return True
@@ -278,8 +284,8 @@ class NVIC():
         cls.icsr = 0
         cls.systick = {
             'ctrl': 0,
-            'tick_val': globs.INTERRUPT_INTERVAL,
-            'reload_val': globs.INTERRUPT_INTERVAL
+            'tick_val': globs.config.systick_reload,
+            'reload_val': globs.config.systick_reload
         }
         # the state of nvic
         cls.little_endian = (uc.query(UC_QUERY_MODE) & UC_MODE_BIG_ENDIAN) == 0
@@ -335,9 +341,11 @@ class NVIC():
         '''
         Detect whether the irq is enabled
         '''
-        # TODO: PRIMASK, BASEPRI
         primask = globs.uc.reg_read(UC_ARM_REG_PRIMASK)
         if primask & 0x1 and ind not in [NUM_HardFault, NUM_NMI, NUM_Reset]:
+            return False
+        basepri = globs.uc.reg_read(UC_ARM_REG_BASEPRI)
+        if basepri != 0 and basepri < cls.vectors[ind].prio:
             return False
         if ind <= 0x10:
             return True

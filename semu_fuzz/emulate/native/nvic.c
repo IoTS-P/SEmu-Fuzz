@@ -53,10 +53,12 @@ static void _remove_enabled(uint16_t irq){
 
 static bool _is_enabled(uint16_t ind){
     /* Detect whether the irq is enabled */
-    // TODO: BASEPRI
-    uint32_t primask;
+    uint32_t primask, basepri;
     uc_reg_read(nvic.uc, UC_ARM_REG_PRIMASK, &primask);
     if(primask & 0x1 && ind != NUM_HardFault && ind != NUM_NMI && ind != NUM_Reset)
+        return false;
+    uc_reg_read(nvic.uc, UC_ARM_REG_BASEPRI, &basepri);
+    if(basepri != 0 && basepri < nvic.vectors[ind].prio)
         return false;
     if(ind <= 0x10)
         return true;

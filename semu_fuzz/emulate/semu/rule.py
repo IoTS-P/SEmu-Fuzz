@@ -742,7 +742,7 @@ def writeHook(uc, access, address, size, value, user_data):
             
 def blockHook(uc, address, size, user_data):
     # every INTERRUPT_INTERVAL blocks, update flag and write into receive buffer
-    if (globs.block_count % globs.INTERRUPT_INTERVAL) == 0 :
+    if (globs.block_count % globs.config.systick_reload) == 0 :
         # update flag
         deal_rule_flag('counter')
 

@@ -21,7 +21,8 @@ default_config = Namespace(
     enable_bitband=True,  # note: bitband used only when Cortex M3 and M4, so if not, set it False
     enable_systick=True,
     systick_reload=globs.INTERRUPT_INTERVAL,  # the block interval of systick
-    handlers={} # the functions handlers to be reset
+    handlers={}, # the functions handlers to be reset
+    disable_irqs=[] # the irqs to be disabled
 )
 
 def parse_config():
