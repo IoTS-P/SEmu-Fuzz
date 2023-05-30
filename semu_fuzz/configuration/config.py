@@ -22,7 +22,10 @@ default_config = Namespace(
     enable_systick=True,
     systick_reload=globs.INTERRUPT_INTERVAL,  # the block interval of systick
     handlers={}, # the functions handlers to be reset
-    disable_irqs=[] # the irqs to be disabled
+    disable_irqs=[], # the irqs to be disabled
+    eth_config={
+        'ETH_RX_BUFFER_SIZE': 1528, # Packets of this app's primary service protocol are smaller than this. Typical size is 1536.
+    }, # the config of the eth
 )
 
 def parse_config():

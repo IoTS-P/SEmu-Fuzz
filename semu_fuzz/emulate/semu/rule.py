@@ -511,23 +511,13 @@ def hardware_write_to_descriptor(buffer_input):
         do_exit(-1)
     else:
         debug_info("Start writing to descriptor phaddr 0x%x\n" % cur_dp_addr, 1)
-    # calculate the count of desciptors to use for this buffer_input
     uc = globs.uc
-    buffer_input_size = len(buffer_input)
-    count = ceil(buffer_input_size / 1524) # TODO: what is the meaning of 1524?
     frame_size = 0
-    if count > 3: # max count is 3
-        count = 3
-    # record current descriptors
+    # write buffer_input into descriptor
     descriptor_list = []
-    # write buffer_input into descriptor 
-    for i in range(count):
-        descriptor_list.append(cur_dp_addr)
-        buffer_input_size = len(buffer_input)
-        RDES = [0,0,0,0]
-        for ii in range(4):
-            RDES[ii] = int.from_bytes(uc.mem_read(cur_dp_addr + 4*ii, 4), 'little')
-            debug_info("==> write start, descriptor RDES%d(0x%x)\n"%(ii, RDES[ii]), 1)
+    buffer_input_size = len(buffer_input)
+    frame_size = 0
+    while buffer_input_size > 0:
         # check RDES
         ret = deal_rule_L('C', cur_dp_addr)
         if ret != 0:
@@ -537,39 +527,47 @@ def hardware_write_to_descriptor(buffer_input):
             RULE.init_dp_addr_flag = False
             globs.config.fork_point_times = globs.config.fork_point_times + 1
             return
-        # first RDES
-        if i == 0:
-            deal_rule_L('F', cur_dp_addr)
-            # buffer 1 maximum size
-            # maximum_size = 0x1FFF & RDES1;
-            # ETH_DMARXDESC_FL add 32 to current frame
-            frame_size = buffer_input_size
-        # end RDES
-        if i == count - 1:
-            deal_rule_L('E', cur_dp_addr)
-        # any RDES
-        deal_rule_L('O', cur_dp_addr)
-        RDES[0] = RDES[0] + (frame_size << 16)
-        if buffer_input_size > 1524:
-            # RBS1: Receive buffer 1 size
-            RDES[1] = RDES[1] & 0xFFFFE5F4 # cur desc size 32
-        else:
-            RDES[1] = (RDES[1] & 0xFFFFE000) + buffer_input_size
-        # buffer content
-        cnt = 0
-        if buffer_input_size > 1524:
-            cnt = 1524
-        else:
-            cnt = buffer_input_size
-        # write to RDES2
-        for j in range(cnt):
-            content = buffer_input[0]
-            uc.mem_write(RDES[2] + j, content.to_bytes(1, 'little'))
-            buffer_input = buffer_input[1:]
-        uc.mem_write(cur_dp_addr, RDES[0].to_bytes(4, 'little'))
-        uc.mem_write(cur_dp_addr + 4, RDES[1].to_bytes(4, 'little'))
+        # record current descriptors
+        descriptor_list.append(cur_dp_addr)
+        # get RDES of current descriptor
+        RDES = [0,0,0,0]
         for ii in range(4):
+            RDES[ii] = int.from_bytes(uc.mem_read(cur_dp_addr + 4*ii, 4), 'little')
+            debug_info("==> write start, descriptor RDES%d(0x%x)\n"%(ii, RDES[ii]), 1)
+        # get the buffer size of current descriptor
+        RDES2_size = globs.config.eth_config['ETH_RX_BUFFER_SIZE']
+        # get the buffer content of current descriptor
+        RDES2_content = buffer_input[:RDES2_size]
+        # update buffer_input
+        buffer_input = buffer_input[RDES2_size:]
+        buffer_input_size = len(buffer_input)
+        # write to RDES0
+        data_size = len(RDES2_content) # get true data size
+        frame_size += data_size
+        RDES[0] = RDES[0] + (data_size << 16)
+        uc.mem_write(cur_dp_addr, RDES[0].to_bytes(4, 'little'))
+        # write to RDES1
+        RDES[1] = (RDES[1] & 0xFFFFE000) + data_size
+        uc.mem_write(cur_dp_addr + 4, RDES[1].to_bytes(4, 'little'))
+        # write to RDES2
+        for j in range(data_size):
+            content = RDES2_content[0]
+            RDES2_content = RDES2_content[1:]
+            uc.mem_write(RDES[2] + j, content.to_bytes(1, 'little'))
+        # update RDES
+        # first descriptor
+        if len(descriptor_list) == 1:
+            deal_rule_L('F', cur_dp_addr)
+        # end descriptor
+        if buffer_input_size == 0:
+            deal_rule_L('E', cur_dp_addr)
+        # any descriptor
+        deal_rule_L('O', cur_dp_addr)
+        # print all the RDES after rule
+        for ii in range(4):
+            RDES[ii] = int.from_bytes(uc.mem_read(cur_dp_addr + 4*ii, 4), 'little')
             debug_info("==> write end, descriptor RDES%d(0x%x)\n"%(ii, RDES[ii]), 1)
+        # update cur_dp_addr
         cur_dp_addr = RDES[3]
     RULE.cur_dp_addr = cur_dp_addr
     deal_rule_L(RULE.RXdescriptor)
