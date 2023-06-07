@@ -25,9 +25,21 @@ def uc_configure():
             prot |= 2
         if 'x' in region['permissions']:
             prot |= 4
-        regions[rname] = (region['base_addr'], region['size'], prot)
+        base_addr = region['base_addr']
+        size = region['size']
+        regions[rname] = (base_addr, size, prot)
         try:
-            uc.mem_map(region['base_addr'], region['size'], prot)
+            # align size to page size
+            if size & (globs.PAGE_SIZE-1) != 0:
+                debug_info(f"[WARN] Size 0x{size:x} of region '{rname}' not page aligned. Aligning to next page boundary size.", 1)
+                size -= size & (globs.PAGE_SIZE-1)
+                size += globs.PAGE_SIZE
+            # align base_addr to page size
+            if base_addr & (globs.PAGE_SIZE-1) != 0:
+                debug_info(f"[WARN] Start 0x{base_addr:x} of region '{rname}' not page aligned. Aligning to previous page boundary.", 1)
+                unalignment = base_addr & (globs.PAGE_SIZE-1)
+                base_addr -= unalignment
+            uc.mem_map(base_addr, size, prot)
         except Exception as e:
             print("[-] Unicorn Setting Error! Fail to map region %s at %#08x, size %#08x, perms: %d, because %s\n" % (rname, region['base_addr'], region['size'], prot, e))
             do_exit(-1)
@@ -61,7 +73,13 @@ def uc_configure():
     return globs.uc
 
 def uc_emulate(uc):
-    globs.user_input = [0x2c, 0x2d, 0xa, 0x2e, 0x2b]
+    with open(globs.args.input_file, "rb") as f:
+        user_input = f.read()
+    while len(user_input):
+        value = int.from_bytes(user_input[:1], 'little')
+        globs.user_input.append(value)
+        user_input = user_input[1:]
+    globs.raw_input = globs.user_input[:]
     try:
         result = uc.emu_start(uc.reg_read(UC_ARM_REG_PC)|1, 0, timeout=0, count=globs.args.instr_limit)
     except UcError as e:
