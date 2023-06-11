@@ -314,6 +314,7 @@ class NVIC():
         cls.vectors[NUM_Reset].prio = -3
         cls.vectors[NUM_NMI].prio = -2
         cls.vectors[NUM_HardFault].prio = -1
+        cls.vectors[NUM_PendSV].prio = 0x100 # lowest priority
 
         # block chook
         uc.hook_add(UC_HOOK_BLOCK, _nvic_tick_check)

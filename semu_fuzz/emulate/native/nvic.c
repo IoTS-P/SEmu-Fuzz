@@ -528,6 +528,7 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
     nvic.vectors[NUM_Reset].prio = -3;
     nvic.vectors[NUM_NMI].prio = -2;
     nvic.vectors[NUM_HardFault].prio = -1;
+    nvic.vectors[NUM_PendSV].prio = 0x100; // lowest priority
 
     // block chook
     uc_hook handler_tick_check;
