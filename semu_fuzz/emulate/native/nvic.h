@@ -43,10 +43,9 @@ typedef struct{
 }VecInfo;
 
 typedef struct {
-    bool is_load;
     uint32_t ctrl;
-    uint32_t tick_val; // the num of blocks from the next trigger
-    uint32_t reload_val; // the num of blocks between two triggers
+    uint32_t val; // the num of blocks from the next trigger
+    uint32_t load; // the num of blocks between two triggers
 }SysTick;
 
 typedef struct {

@@ -297,22 +297,44 @@ void send_pending(uc_engine* uc, uint16_t irq){
     _set_pending(irq);
 }
 
+static void deal_systick(){
+    // if systick is disabled, return
+    if(!(nvic.systick.ctrl & 0x1))
+        return;
+    uc_engine* uc = nvic.uc;
+    // reload the systick equal to decrease the value of systick!
+    if(nvic.systick.val == 0){
+        // reload the value of systick
+        nvic.systick.val = nvic.systick.load;
+        // clear count flag
+        nvic.systick.ctrl &= 0xfffeffff;
+        uc_mem_write(uc, SYSTICK_CTRL, &nvic.systick.ctrl, sizeof(nvic.systick.ctrl));
+    }else{
+        // decrease the value of systick
+        nvic.systick.val -= 1;
+    }
+    // if value of systick is 0, active the irq
+    if(nvic.systick.val == 0){
+        // set count flag
+        nvic.systick.ctrl |= 0x00010000;
+        uc_mem_write(uc, SYSTICK_CTRL, &nvic.systick.ctrl, sizeof(nvic.systick.ctrl));
+        // pending the systick irq
+        if(nvic.systick.ctrl & 0x2 && nvic_get_active() != NUM_SYSTICK){
+            _set_pending(NUM_SYSTICK);
+        }  
+    }
+    uc_mem_write(uc, SYSTICK_VAL, &nvic.systick.val, sizeof(nvic.systick.val));
+}
+
 /*------------- Hook Functions -------------*/
 
 /* check_pending and check timer every block. */
 static void handler_tick_check_cb(uc_engine *uc, uint64_t address, uint32_t size, void *user_data) {
     // check pending list
     check_pending();
-    // check timer
-    nvic.systick.tick_val -= 1; // sub tick, don't care systick.is_load
-    if(!nvic.systick.tick_val){
-        nvic.systick.tick_val = nvic.systick.reload_val;
-// #ifdef DEBUG_NVIC
-//     printf("[+] nvic.systick.tick_val: 0.\n");
-// #endif
-        if(nvic.systick.is_load && nvic_get_active() != NUM_SYSTICK){ // just pending systick when is load, and don't repeat active it.
-            send_pending(uc, NUM_SYSTICK);
-        }
+    // if systick is enabled, check the value of systick
+    if(nvic.systick.ctrl & 0x1){
+        deal_systick();
     }
 }
 
@@ -403,37 +425,61 @@ static void handler_nvic_ip_write_cb(uc_engine *uc, uc_mem_type type, uint64_t a
     uint16_t irq = address - NVIC_IP_BASE + 0x10; // not for exception
     nvic.vectors[irq].prio = value;
 #ifdef DEBUG_NVIC
-        printf("############### Setting nvic #0x{%02x}.priority to {:%x}", irq, value);
+        printf("############### Setting nvic #0x%02x.priority to 0x%lx\n", irq, value);
 #endif
 }
 
-static void handler_systick_ctrl_write_cb(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data){
-    /* hook when write systick_ctrl reg,
-     * SysTick is only concerned with writing the 3 lowest bits: ENABLE, TICKINT, CLKSOURCE. */
-    // changed bits
-    uint32_t change_bits = nvic.systick.ctrl ^ value;
-    // if enable status change, able or disable systick
-    if (change_bits & 0x1)
-        if (value & 0x1){
-            nvic.systick.is_load = true;
-            _set_enabled(NUM_SYSTICK);
-            // reset tick_val
-            nvic.systick.tick_val = nvic.systick.reload_val;
+static void handler_systick_write_cb(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data){
+    /* hook when write systick_ctrl/load/write reg */
+    // check the written reg
+    uint32_t change_bits;
+    switch (address)
+    {
+    case SYSTICK_CTRL:
+        change_bits = nvic.systick.ctrl ^ value;
+        // enable or disable systick
+        if (change_bits & 0x1){
+            nvic.systick.val = 0;
+            if(value & 0x1){
 #ifdef DEBUG_NVIC
-    printf("############### Enable Systick. reload_val=%u\n", nvic.systick.reload_val);
+    printf("############### Enable Systick. load=%u\n", nvic.systick.load);
 #endif
-        }
-        else{
-            nvic.systick.is_load = false;
-            _remove_enabled(NUM_SYSTICK);
+            }else{
 #ifdef DEBUG_NVIC
-    printf("############### Disable Systick.\n");
+    printf("############### Disable Systick.");
 #endif
+            }
         }
-    else if(change_bits & 0x4) // reload
-        nvic.systick.tick_val = nvic.systick.reload_val;
-    // record value
-    nvic.systick.ctrl = value;
+        // enable or disable systick interrupt
+        if (change_bits & 0x2){
+            if (!(value & 0x2))
+                _remove_pending(NUM_SYSTICK, 0);
+        }
+        // if clksource change, reset systick val
+        if (change_bits & 0x4){
+            nvic.systick.val = 0;
+        }
+        nvic.systick.ctrl = value;
+        break;
+    case SYSTICK_LOAD:
+        nvic.systick.load = value;
+        break;
+    case SYSTICK_VAL: // writing any value to systick val will reset systick val
+        nvic.systick.val = 0;
+        // clear countflag
+        nvic.systick.ctrl &= 0xFFFEFFFF;
+        break;
+    default:
+        break;
+    }
+    uc_mem_write(uc, SYSTICK_VAL, &nvic.systick.val, sizeof(nvic.systick.val));
+    uc_mem_write(uc, SYSTICK_CTRL, &nvic.systick.ctrl, sizeof(nvic.systick.ctrl));
+}
+
+static void handler_systick_ctrl_readafter_cb(uc_engine *uc, uc_mem_type type, uint64_t address, int size, int64_t value, void *user_data){
+    // clear countflag
+    nvic.systick.ctrl &= 0xFFFEFFFF;
+    uc_mem_write(uc, SYSTICK_CTRL, &nvic.systick.ctrl, sizeof(nvic.systick.ctrl));
 }
 
 static void handler_nvic_intr_cb(uc_engine *uc, uint32_t intno, void *user_data){
@@ -466,9 +512,10 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
     nvic.vtor = initial_vtor;
     uc_mem_write(uc, VTOR_BASE, &initial_vtor, 4);
     nvic.icsr = 0;
-    nvic.systick.is_load = false;
-    nvic.systick.reload_val = systick_reload;
-    nvic.systick.tick_val = systick_reload;
+    nvic.systick.load = systick_reload - 1;
+    nvic.systick.val = 0;
+    uc_mem_write(uc, SYSTICK_LOAD, &nvic.systick.load, sizeof(nvic.systick.load));
+    uc_mem_write(uc, SYSTICK_VAL, &nvic.systick.val, sizeof(nvic.systick.val));
     // init the state of vectors
     for(int i=0; i < num_vecs; ++i){
         nvic.vectors[i].prio = 0;
@@ -498,11 +545,13 @@ void configure(uc_engine *uc, uint16_t num_vecs, uint32_t initial_vtor, bool ena
     uc_hook handler_state_write;
     uc_hook_add(uc, &handler_state_write, UC_HOOK_MEM_WRITE, handler_state_write_cb, NULL, ISER_BASE, ICPR_BASE + (int)(num_vecs/8) - 1);
         
-    // Listen for changes to SYSTICK_CTRL
-    uc_hook handler_systick_ctrl_write;
-    if(enable_systick)
-        uc_hook_add(uc, &handler_systick_ctrl_write, UC_HOOK_MEM_WRITE, handler_systick_ctrl_write_cb, NULL, SYSTICK_CTRL, SYSTICK_CTRL + 3);
-
+    uc_hook handler_systick_write, handler_systick_ctrl_readafter;
+    if(enable_systick){
+        // Listen for changes to SYSTICK_CTRL/LOAD/VAL
+        uc_hook_add(uc, &handler_systick_write, UC_HOOK_MEM_WRITE, handler_systick_write_cb, NULL, SYSTICK_CTRL, SYSTICK_VAL + 3);
+        // Listen for read SYSTICK_CTRL
+        uc_hook_add(uc, &handler_systick_ctrl_readafter, UC_HOOK_MEM_READ_AFTER, handler_systick_ctrl_readafter_cb, NULL, SYSTICK_CTRL, SYSTICK_VAL + 3);
+    }
     // Listen for changes to NVIC_IP
     uc_hook handler_nvic_ip_write;
     uc_hook_add(uc, &handler_nvic_ip_write, UC_HOOK_MEM_WRITE, handler_nvic_ip_write_cb, NULL, NVIC_IP_BASE, NVIC_IP_BASE + (int)(num_vecs) - 1);

@@ -108,7 +108,7 @@ def nvic_get_active():
     if globs.config.enable_native:
         from ctypes import c_int16
         return c_int16(native_nvic.nvic_get_active()).value
-    curr_active = globs.uc.reg_read(UC_ARM_REG_IPSR)
+    curr_active = NVIC.get_active()
     return curr_active
 
 def nvic_get_pending(irq):
@@ -128,11 +128,7 @@ def _nvic_tick_check(uc, address, size, user_data):
     every INTERRUPT_INTERVAL blocks, active the tick timer irq
     '''
     NVIC.check_pending()
-    NVIC.systick['tick_val'] -= 1
-    if NVIC.systick['tick_val'] == 0:
-        NVIC.systick['tick_val'] = NVIC.systick['reload_val']
-        if (NUM_SYSTICK in NVIC.enabled) and nvic_get_active() != NUM_SYSTICK: # SYSTICK
-            send_pending(uc, NUM_SYSTICK)
+    NVIC.deal_systick()
 
 def _nvic_intr_handle(uc, intno, size):
     '''
@@ -233,30 +229,45 @@ def _handler_nvic_ip_write(uc, mem_type, address, size, value, user_data):
     if DEBUG_NVIC:
         print("############### Setting nvic #0x{:02x}.priority to {:x}".format(irq, value))
 
-def _handler_systick_ctrl_write(uc, mem_type, address, size, value, user_data):
+def _handler_systick_write(uc, access, address, size, value, user_data):
     '''
-    hook when write systick_ctrl reg,
-    SysTick is only concerned with writing the 3 lowest bits: ENABLE, TICKINT, CLKSOURCE.
+    hook when write systick_ctrl/load/write reg
     '''
-    # changed bits
-    change_bits = NVIC.systick['ctrl'] ^ value
-    # if enable status change, able or disable systick
-    if change_bits & 0x1:
-        if value & 0x1:
-            # start_timer(uc, NVIC.systick['timer_ind'])
-            NVIC.set_able(NUM_SYSTICK)
-            # reset systick val
-            NVIC.systick['tick_val'] = NVIC.systick['reload_val']
+    # check the written reg
+    if address == SYSTICK_CTRL:
+        # changed bits
+        change_bits = NVIC.systick['ctrl'] ^ value
+        # enable or disable systick
+        if change_bits & 0x1:
             if DEBUG_NVIC:
-                print("############### Enable Systick. reload_val=%u" % NVIC.systick['reload_val'])
-        else:
-            # stop_timer(uc, NVIC.systick['timer_ind'])
-            NVIC.remove_able(NUM_SYSTICK)
-    elif change_bits & 0x4:
-        # reload_timer(NVIC.systick['timer_ind'])
-        pass
-    # record value
-    NVIC.systick['ctrl'] = value  
+                NVIC.systick['val'] = 0 # reset systick val
+                if value & 0x1:
+                    print("############### Enable Systick. load=%u" % NVIC.systick['load'])
+                else:
+                    print("############### Disable Systick.")
+        # enable or disable systick interrupt
+        if change_bits & 0x2:
+            if value & 0x2 == 0:
+                NVIC.remove_pending(NUM_SYSTICK, -1) # clear systick pending
+        # if clksource change, reset systick val
+        if change_bits & 0x4:
+            NVIC.systick['val'] = 0
+        NVIC.systick['ctrl'] = value
+    elif address == SYSTICK_LOAD:
+        # record value
+        NVIC.systick['load'] = value
+    # writing any value to systick val will reset systick val
+    elif address == SYSTICK_VAL:
+        NVIC.systick['val'] = 0
+        NVIC.systick['ctrl'] &= 0xfffeffff # clear COUNTFLAG
+    uc.mem_write(SYSTICK_VAL, NVIC.systick['val'].to_bytes(4, 'little'))
+    uc.mem_write(SYSTICK_CTRL, NVIC.systick['ctrl'].to_bytes(4, 'little'))
+
+def _handler_systick_ctrl_readafter(uc, access, address, size, value, user_data):
+    # clear countflag
+    NVIC.systick['ctrl'] &= 0xfffeffff
+    uc.mem_write(SYSTICK_CTRL, NVIC.systick['ctrl'].to_bytes(4, 'little'))
+
 
 #------------- Main Class -------------#
 
@@ -284,9 +295,11 @@ class NVIC():
         cls.icsr = 0
         cls.systick = {
             'ctrl': 0,
-            'tick_val': globs.config.systick_reload,
-            'reload_val': globs.config.systick_reload
+            'val': 0,
+            'load': globs.config.systick_reload - 1
         }
+        uc.mem_write(SYSTICK_LOAD, cls.systick['load'].to_bytes(4, 'little'))
+        uc.mem_write(SYSTICK_VAL, cls.systick['val'].to_bytes(4, 'little'))
         # the state of nvic
         cls.little_endian = (uc.query(UC_QUERY_MODE) & UC_MODE_BIG_ENDIAN) == 0
         cls.pack_prefix = "<" if cls.little_endian else ">"
@@ -317,9 +330,12 @@ class NVIC():
         uc.hook_add(UC_HOOK_MEM_WRITE, _handler_state_write,
                     user_data=None, begin=ISER_BASE, end=ICPR_BASE + int(num_vecs/8) - 1)
         
-        # Listen for changes to SYSTICK_CTRL
         if globs.config.enable_systick:
-            uc.hook_add(UC_HOOK_MEM_WRITE, _handler_systick_ctrl_write,
+            # Listen for changes to SYSTICK_CTRL/LOAD/VAL
+            uc.hook_add(UC_HOOK_MEM_WRITE, _handler_systick_write,
+                    user_data=None, begin=SYSTICK_CTRL, end=SYSTICK_VAL + 3)
+            # Listen for read SYSTICK_CTRL
+            uc.hook_add(UC_HOOK_MEM_READ_AFTER, _handler_systick_ctrl_readafter,
                     user_data=None, begin=SYSTICK_CTRL, end=SYSTICK_CTRL + 3)
         
         # Listen for changes to NVIC_IP
@@ -373,7 +389,7 @@ class NVIC():
                 min_pend = irq
 
         # don't interrupt when a higher or same priority interrupt active.
-        curr_active = nvic_get_active()
+        curr_active = cls.get_active()
         if curr_active != 0 and cls.vectors[curr_active].prio <= min_prio:
             return 0
 
@@ -455,7 +471,7 @@ class NVIC():
         cls._push_state() # save context in psp
 
         # NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG needs to be set when enter from thread mode
-        if nvic_get_active() == 0:
+        if cls.get_active() == 0:
             new_lr |= NVIC_INTERRUPT_ENTRY_LR_THREADMODE_FLAG
 
         # When the stack is SP_process, switch to SP_Main
@@ -488,7 +504,7 @@ class NVIC():
         stack recovery and state recovery
         '''
         uc = cls.uc
-        curr_active = nvic_get_active()
+        curr_active = cls.get_active()
 
         if DEBUG_NVIC:
             print("[*] Interrupt #0x%02x: Returning..." % curr_active)
@@ -514,8 +530,37 @@ class NVIC():
             print("[+] Interrupt #0x%02x: Return Success!" % curr_active)
             print("[+] ----------------------------------")
         
-
         return False
+    
+    @classmethod
+    def get_active(cls):
+        return cls.uc.reg_read(UC_ARM_REG_IPSR)
+    
+    @classmethod
+    def deal_systick(cls):
+        # if systick is disabled, return
+        if cls.systick['ctrl'] & 0x1 == 0:
+            return
+        uc = cls.uc
+        # reload the systick equal to decrease the value of systick!
+        if cls.systick['val'] == 0:
+            # reload the value of systick
+            cls.systick['val'] = cls.systick['load']
+            # clear COUNTFLAG
+            cls.systick['ctrl'] &= 0xfffeffff
+            uc.mem_write(SYSTICK_CTRL, cls.systick['ctrl'].to_bytes(4, 'little'))
+        else:
+            # decrease the value of systick
+            cls.systick['val'] -= 1
+        # if value of systick is 0, active the irq
+        if cls.systick['val'] == 0:
+            # set COUNTFLAG
+            cls.systick['ctrl'] |= 0x10000
+            uc.mem_write(SYSTICK_CTRL, cls.systick['ctrl'].to_bytes(4, 'little'))
+            # pending the systick irq
+            if (NVIC.systick['ctrl'] & 0x2) and cls.get_active() != NUM_SYSTICK: # SYSTICK
+                cls.set_pending(NUM_SYSTICK)
+        uc.mem_write(SYSTICK_VAL, cls.systick['val'].to_bytes(4, 'little'))
 
     @classmethod
     def check_pending(cls):
