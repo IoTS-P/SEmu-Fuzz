@@ -3,7 +3,7 @@ from ..exit import do_exit
 from .log import log_configure
 
 from unicorn import UC_HOOK_CODE, UC_HOOK_BLOCK, UC_HOOK_MEM_WRITE_UNMAPPED, UC_HOOK_MEM_READ_INVALID, UC_MEM_WRITE_UNMAPPED
-from unicorn.arm_const import UC_ARM_REG_PC, UC_ARM_REG_LR
+from unicorn.arm_const import *
 from time import perf_counter
 import sys
 
@@ -23,7 +23,8 @@ def debug_configure():
     globs.uc.hook_add(UC_HOOK_MEM_WRITE_UNMAPPED | UC_HOOK_MEM_READ_INVALID, _hook_mem_invalid_access)
     # add function hook
     if glob_debug_level > 0 and globs.config.symbols:
-        globs.uc.hook_add(UC_HOOK_CODE, _hook_funtion)
+        globs.uc.hook_add(UC_HOOK_BLOCK, _hook_funtion)
+        globs.uc.hook_add(UC_HOOK_CODE, _hook_caller_code)
     if glob_debug_level > 2:
         globs.uc.hook_add(UC_HOOK_CODE, _hook_instruction)
         globs.uc.hook_add(UC_HOOK_BLOCK, _hook_block) 
@@ -83,11 +84,21 @@ def _hook_block(uc, address, size, user_data):
     '''
     debug_info("Basic Block: addr= 0x{0:016x} , size=0x{1:016x} (lr=0x{2:x})\n".format(address, size, uc.reg_read(UC_ARM_REG_LR)), 3)
 
+last_code = 0
+def _hook_caller_code(uc, address, size, user_data):
+    '''
+    hook every code and log. 
+    Used if globs.debug_level > 0.
+    '''
+    global last_code
+    last_code = address
+
 def _hook_funtion(uc, address, size, user_data):
     '''
     hook every code and match symbol table.
     Used if globs.args.debug_level > 0 and has symbols.
     '''
     if address in globs.config.symbols:
-        debug_function("%d %s %s\n"%(globs.block_count, hex(address), globs.config.symbols[address]))
+        global last_code
+        debug_function("%d %s %s %s\n"%(globs.block_count, hex(last_code), hex(address), globs.config.symbols[address]))
 
