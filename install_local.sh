@@ -31,14 +31,26 @@ git clone https://github.com/AFLplusplus/AFLplusplus
 cd AFLplusplus/
 make || exit 1
 sudo make install || exit 1
-git -C unicorn_mode submodule foreach --recursive git pull origin master || exit 1 # don't update other submodule
+echo "[+] Success to build AFL!"
+
+# ./build_unicorn_support.sh || exit 1
+#  replace the build_unicorn_support.sh  with the content below.
+# get unicornafl
+git -C unicorn_mode submodule foreach --recursive git pull origin master # don't update other submodule
 cd unicorn_mode/
-./build_unicorn_support.sh || exit 1
+# fix the submodle init
+git clone https://github.com/AFLplusplus/unicornafl
+# install unicornafll
+cd unicornafl/bindings/python
+pip install .
+cd ../../
 # fix the libunicorn.so
-cd unicornafl/unicorn/build/
+make clean
+make -j1
+cd ./unicorn/build/
 sudo make install || exit 1
 cd ../../../
-echo "[+] Success to build AFL!"
+echo "[+] Success to build Unicornafl!"
 
 cd ../../
 
