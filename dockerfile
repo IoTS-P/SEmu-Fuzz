@@ -1,5 +1,10 @@
 from ubuntu:22.04
 env LANG=C.UTF-8 LC_ALL=C.UTF-8
+# if cannot apt update, change the apt source.
+# RUN sed -i s:/archive.ubuntu.com:/mirrors.tuna.tsinghua.edu.cn/ubuntu:g /etc/apt/sources.list
+# RUN cat /etc/apt/sources.list
+# RUN apt-get clean
+# RUN apt-get -y update --fix-missing
 run apt-get update
 # install necessary dependence
 run apt-get install -y python3-pip automake sudo git vim clang cmake llvm wget unzip build-essential

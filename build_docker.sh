@@ -1,1 +1,1 @@
-sudo -S docker build -t semu_fuzz .
+sudo -S docker build --network=host -t semu_fuzz .

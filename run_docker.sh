@@ -1,1 +1,1 @@
-sudo docker run -it semu_fuzz /bin/bash
+sudo docker run -it --net=host  semu_fuzz /bin/bash
