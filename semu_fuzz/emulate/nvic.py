@@ -254,8 +254,9 @@ def _handler_systick_write(uc, access, address, size, value, user_data):
             NVIC.systick['val'] = 0
         NVIC.systick['ctrl'] = value
     elif address == SYSTICK_LOAD:
-        # record value
-        NVIC.systick['load'] = value
+        # only when load value decrease, reset systick load
+        if value < globs.config.systick_reload:
+            NVIC.systick['load'] = value - 1
     # writing any value to systick val will reset systick val
     elif address == SYSTICK_VAL:
         NVIC.systick['val'] = 0

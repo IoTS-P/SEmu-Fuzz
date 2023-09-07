@@ -462,7 +462,8 @@ static void handler_systick_write_cb(uc_engine *uc, uc_mem_type type, uint64_t a
         nvic.systick.ctrl = value;
         break;
     case SYSTICK_LOAD:
-        nvic.systick.load = value;
+        if(value < nvic.systick.load) // only when load value decrease, reset systick load
+            nvic.systick.load = value - 1;
         break;
     case SYSTICK_VAL: // writing any value to systick val will reset systick val
         nvic.systick.val = 0;
