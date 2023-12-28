@@ -4,6 +4,7 @@ from .emulate import uc, nvic
 from .log import debug, fuzz_stat
 from .emulate.semu.rule import rules_configure
 from .handlers import reset_func_handler
+from .emulate import snapshot
 import gc
 
 # for debug when haven't install this pkg.
@@ -44,7 +45,12 @@ def main():
 
     # Collect garbage once in order to avoid doing so while fuzzing
     gc.collect()
-
+    # load snapshot
+    if config.snapshot_load_enable:
+        snapshot.load_snapshot(config.snapshot_load_path)
+    # record snapshot
+    if config.snapshot_record_enable:
+        snapshot.record_snapshot(config.snapshot_load_path, config.snapshot_record_address,uc)
     # start emulation or fuzz
     emulate_mode = globs.config.emulate_mode
     if emulate_mode == 'emulate':

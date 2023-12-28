@@ -70,6 +70,7 @@ def uc_configure():
     uc.hook_add(UC_HOOK_BLOCK, _hook_block_add)
     # store in globs
     globs.uc = uc
+    globs.regions = regions
     return globs.uc
 
 def uc_emulate(uc):

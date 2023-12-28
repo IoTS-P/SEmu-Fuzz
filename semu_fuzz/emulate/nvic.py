@@ -6,7 +6,7 @@ from unicorn import *
 from unicorn.arm_const import *
 import struct
 from random import choice
-import os
+import os, pickle
 
 DEBUG_NVIC = False
 native_nvic = None
@@ -118,6 +118,23 @@ def nvic_get_pending(irq):
     if globs.config.enable_native:
         return native_nvic.nvic_get_pending(irq)
     return NVIC.vectors[irq].pending
+
+def nvic_state_dump(path):
+    '''
+    dump the state of NVIC
+    '''
+    if globs.config.enable_native:
+        return native_nvic.serialize(path.encode('ascii'))
+    return NVIC.state_dump(path)
+    
+
+def nvic_state_load(path):
+    '''
+    load the state of NVIC
+    '''
+    if globs.config.enable_native:
+        return native_nvic.deserialize(path.encode('ascii'))
+    return NVIC.state_load(path)
 
 #------------- Hook Functions -------------#
 
@@ -353,6 +370,26 @@ class NVIC():
         Detect returns from an ISR by the PC value
         """
         return pc & EXC_RETURN == EXC_RETURN
+    
+    @classmethod
+    def _get_attributes(self):
+        '''
+        Get all attributes of NVIC
+        '''
+        # Get all attributes
+        members = dir(self)
+        attributes = {}
+        
+        # Filter out callable attributes
+        for attr in members:
+            if not callable(getattr(self, attr)) and not attr.startswith("__"):
+                v = getattr(self, attr)
+                try:
+                    pickle.dumps(v)
+                    attributes[attr] = v
+                except:
+                    pass
+        return attributes
     
     @classmethod
     def _is_enabled(cls, ind):
@@ -620,3 +657,21 @@ class NVIC():
     @classmethod
     def set_vtor(cls, addr):
         cls.vtor = addr
+    
+    @classmethod
+    def state_dump(cls, snapshot_file):
+        # get the attributes
+        attributes = cls._get_attributes()
+        # dump the state
+        with open(snapshot_file, "wb") as fp:
+            pickle.dump(attributes, fp)
+
+    @classmethod
+    def state_load(cls, snapshot_file):
+        # load the attributes
+        with open(snapshot_file, "rb") as fp:
+            loaded_attributes = pickle.load(fp)
+        
+        # set the attributes
+        for k, v in loaded_attributes.items():
+            setattr(cls, k, v)
