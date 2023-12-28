@@ -12,7 +12,8 @@ from random import choice
 from math import ceil
 import os
 import re
-
+import pickle
+# modify import and global variable end
 #--------------Class Identification------------------#
 
 def correct_addr_to_map(address, size, mode):
@@ -770,6 +771,19 @@ def beginpointHook(uc, address, size, user_data):
         RULE.regs[data_reg].value.user_r_fifo = globs.user_input[4:]
     uc.hook_del(RULE.beginpointHook_handler)
 
+def semu_state_dump(path):
+    '''
+    dump the state of SEMU
+    '''
+    return RULE.state_dump(path)
+
+def semu_state_load(path):
+    '''
+    load the state of SEMU
+    '''
+    return RULE.state_load(path)
+
+#------------------minipython modify end------------------------#
 def exceptionexitHook(uc, intno, size):
     # deal_rule_flag('timer')
     pass
@@ -812,6 +826,44 @@ class RULE():
     meet_forkpoint = False
     beginpointHook_handler = None
     hit_hook = 0
+
+    @classmethod
+    def _get_attributes(self):
+        '''
+        Get all attributes of NVIC
+        '''
+        # Get all attributes
+        members = dir(self)
+        attributes = {}
+        
+        # Filter out callable attributes
+        for attr in members:
+            if not callable(getattr(self, attr)) and not attr.startswith("__") and attr not in ['uc', 'rules', 'flags']:
+                v = getattr(self, attr)
+                try:
+                    pickle.dumps(v)
+                    attributes[attr] = v
+                except:
+                    pass
+        return attributes
+    
+    @classmethod
+    def state_dump(cls, snapshot_file):
+        # get the attributes
+        attributes = cls._get_attributes()
+        # dump the state
+        with open(snapshot_file, "wb") as fp:
+            pickle.dump(attributes, fp)
+    
+    @classmethod
+    def state_load(cls, snapshot_file):
+        # load the attributes
+        with open(snapshot_file, "rb") as fp:
+            loaded_attributes = pickle.load(fp)
+        
+        # set the attributes
+        for k, v in loaded_attributes.items():
+            setattr(cls, k, v)
     
     @classmethod
     def readNLPModelfromFile(ru, uc, path):

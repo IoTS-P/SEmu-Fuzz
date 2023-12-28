@@ -1,10 +1,10 @@
 from .. import globs
 from ..log.debug import debug_info
 from .nvic import nvic_state_dump, nvic_state_load
+from ..emulate.semu.rule import semu_state_dump, semu_state_load
 
 from unicorn import *
 from unicorn.arm_const import *
-from ..utils import my_debug_log
 import re
 from intelhex import IntelHex
 
@@ -77,7 +77,7 @@ def load_snapshot(path):
         return
     load_reg_and_memory(path)
     nvic_state_load(path+'_nvic')
-    my_debug_log("load_snapshot: "+path)
+    semu_state_load(path+'_semu')
 
 def collect_regs(uc):
     return {const: uc.reg_read(const) for const in uc_reg_consts}
@@ -220,6 +220,8 @@ def record_snapshot_hook(uc, address, size, user_data):
     dump_state_exit_hook(uc)
     # 2. NVIC State
     nvic_state_dump(snapshot_path+'_nvic')
+    # 3. SEMU State
+    semu_state_dump(snapshot_path+'_semu')
     uc.hook_del(snapshot_hook)
 
 def record_snapshot(path, snapshot_point,uc):
@@ -230,4 +232,3 @@ def record_snapshot(path, snapshot_point,uc):
     snapshot_path = path
     global snapshot_hook
     snapshot_hook = uc.hook_add(UC_HOOK_CODE, record_snapshot_hook, begin=snapshot_point - 1, end=snapshot_point | 1)
-    my_debug_log("record_snapshot: "+path)
