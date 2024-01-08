@@ -49,7 +49,7 @@ def main():
     if config.snapshot_load_enable:
         snapshot.load_snapshot(config.snapshot_load_path)
     # record snapshot
-    if config.snapshot_record_enable:
+    if config.snapshot_record_address:
         snapshot.record_snapshot(config.snapshot_load_path, config.snapshot_record_address,uc)
     # start emulation or fuzz
     emulate_mode = globs.config.emulate_mode

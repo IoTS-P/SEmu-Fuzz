@@ -26,6 +26,9 @@ default_config = Namespace(
     eth_config={
         'ETH_RX_BUFFER_SIZE': 1528, # Packets of this app's primary service protocol are smaller than this. Typical size is 1536.
     }, # the config of the eth
+    snapshot_load_enable=False, # True if you want to load snapshot
+    snapshot_load_path=None, # the path of the snapshot file (default: config_dir/snapshot)
+    snapshot_record_address=None, # the address of the snapshot record
 )
 
 def parse_config():
