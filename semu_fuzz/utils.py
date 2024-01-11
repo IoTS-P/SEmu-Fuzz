@@ -24,7 +24,7 @@ def get_realpath(path, f):
     return f
 
 def merge_dict(dct, merge_dct):
-    ''' just merge the items of two dicts. '''
+    ''' just merge the items of two dicts. left = right. '''
     for k, v in merge_dct.items():
         if (k in dct and isinstance(dct[k], dict)
                 and isinstance(merge_dct[k], dict)):
@@ -38,7 +38,7 @@ def yaml_load(path):
     # check the path
     if not os.path.isfile(path):
         print("[-] Yaml load failed! File not exists: %s" % path)
-        do_exit(1)
+        exit(-1)
     # parse file in the yaml format.
     with open(path, 'rb') as fp:
         content = yaml.load(fp, Loader=yaml.FullLoader)
@@ -54,6 +54,39 @@ def load_path(path):
         do_exit(-1)
     with open(path, 'r') as fp:
         return fp.read()
+
+import subprocess
+
+def run_task(command, task_id, timeout=10, text=True):
+    print("[*] %05d Start Command: %s" % (task_id, command))
+
+    try:
+        result = subprocess.run(command, shell=True, check=True, timeout=timeout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=text)
+    except subprocess.CalledProcessError as e:
+        print("[-] %05d Process returned non-zero exit code: %s" % (task_id, e))
+        return False
+    except subprocess.TimeoutExpired:
+        print("[-] %05d Process timed out. Killing process..." % task_id)
+        return False
+
+    return result
+
+import importlib
+
+def resolve_funcname(func_name):
+    # Resolve the function name
+    mod_name, func_name = func_name.rsplit('.', 1)
+    mod = importlib.import_module(mod_name)
+    func_obj = getattr(mod, func_name)
+    return func_obj
+
+def find_output_folders(base_path, search_key):
+    result = []
+    for root, dirs, files in os.walk(base_path):
+        for dir in dirs:
+            if dir.startswith(search_key):
+                result.append(os.path.join(root, dir))
+    return result
 
 import subprocess
 from .log.debug import debug_info

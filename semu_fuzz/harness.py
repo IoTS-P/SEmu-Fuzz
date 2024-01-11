@@ -46,7 +46,7 @@ def main():
     # Collect garbage once in order to avoid doing so while fuzzing
     gc.collect()
     # load snapshot
-    if config.snapshot_load_enable:
+    if config.snapshot_load_enable and not args.snapshot_disable:
         snapshot.load_snapshot(config.snapshot_load_path)
     # record snapshot
     if config.snapshot_record_address:
