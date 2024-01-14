@@ -85,7 +85,7 @@ def draw_one_block(fuzzs_block_dir):
     gnuplot_code += f'set title "{elf_dir}" noenhanced;'
     gnuplot_code += f'set xtics {xtics};'
     gnuplot_code += f'set xrange [0:{xrange_end}];'
-    gnuplot_code += f'plot "{plot_dat_path}" using ($1/{xtics_second}):2 with lines notitle ;'
+    gnuplot_code += f'plot "{plot_dat_path}" using ($1/{xtics_second}):2 with lines title "{stat_dir.rsplit("/",1)[-1]}" noenhanced,'
 
     try:
         output = subprocess.check_output(["gnuplot", "-e", gnuplot_code])
