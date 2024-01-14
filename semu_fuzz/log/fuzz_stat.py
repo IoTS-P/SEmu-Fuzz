@@ -39,7 +39,10 @@ def stat_visit_block():
     with open(stat_file_list['visit_block'], "a+") as f:
         visit_block = [hex(x) for x in list(visit_block)]
         visit_block_str = " ".join(visit_block)
-        f.write("%d\t%s\n" % (int(round(os.path.getctime(globs.args.input_file))), visit_block_str))
+        timestamp = int(globs.args.timestamp)
+        if timestamp == -1:
+            timestamp = int(round(os.path.getctime(globs.args.input_file)))
+        f.write("%d\t%s\n" % (timestamp, visit_block_str))
 
 def stat_exit():
     stat_visit_block()

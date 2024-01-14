@@ -12,6 +12,7 @@ def _init_parser(parser):
     parser.add_argument('-d', '--debug_level', default=0, type=int, help="0 disable debug, max debug level is 3.")
     parser.add_argument('-l', '--instr-limit', dest='instr_limit', type=int, default=globs.DEFAULT_BASIC_BLOCK_LIMIT, help="Maximum number of instructions to execute. 0: no limit. Default: {:d}".format(globs.DEFAULT_BASIC_BLOCK_LIMIT))
     parser.add_argument('--snapshot-disable', default=False, action='store_true', help="Disable snapshot feature.")
+    parser.add_argument('--timestamp', default=-1, type=int, help="Add timestamp to the input file name.")
 
 
 def parse_args():

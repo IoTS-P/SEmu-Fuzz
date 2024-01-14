@@ -77,10 +77,12 @@ def stat(base_configs):
                 commands = []
                 # find all the file in fuzz_queue_dir and sort them.
                 for fuzz_input in _find_file(fuzz_queue_dir):
-                    command_line = f"{tool_name} {fuzz_input} {config_path} -s {unique_stat_path.rsplit('/',1)[-1]}"
-                    # split id:xxxx from fuzz_input
-                    fuzz_input_id = int(round(os.path.getctime(fuzz_input)))
-                    commands.append([fuzz_input_id,command_line])
+                    # split the time from the file name, e.g. id:000004,src:000000,time:228559,execs:42,op:havoc,rep:3,+cov
+                    fuzz_input_time = int(fuzz_input.split('/')[-1].split('time:')[1].split(',')[0])
+                    # change the timestamp(ms) to timestamp(s)
+                    fuzz_input_time = int(fuzz_input_time/1000)
+                    command_line = f"{tool_name} {fuzz_input} {config_path} -s {unique_stat_path.rsplit('/',1)[-1]} --timestamp {fuzz_input_time}"
+                    commands.append([fuzz_input_time, command_line])
                 commands = sorted(commands, key=lambda x: x[0])
                 commands = [item[1] for item in commands]
                 commands[0] += " --snapshot-disable"
