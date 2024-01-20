@@ -17,7 +17,7 @@ default_config = Namespace(
     begin_point=None,  # the beginning of the data input, default is entry_point
     fork_points=[],  # the point of the main loop of the bin
     fork_point_times=2, # the max time to meet fork point when fuzz
-    enable_native=False, # True if your want to use c 
+    enable_native=True, # True if your want to use c 
     enable_bitband=True,  # note: bitband used only when Cortex M3 and M4, so if not, set it False
     enable_systick=True,
     systick_reload=globs.INTERRUPT_INTERVAL,  # the block interval of systick
@@ -29,6 +29,7 @@ default_config = Namespace(
     snapshot_load_enable=False, # True if you want to load snapshot
     snapshot_load_path=None, # the path of the snapshot file (default: config_dir/snapshot)
     snapshot_record_address=None, # the address of the snapshot record
+    data_reload=1000, # the reload of the data input
 )
 
 def parse_config():

@@ -738,12 +738,25 @@ def writeHook(uc, access, address, size, value, user_data):
             deal_rule_O(address) # once any change, reset by O
             deal_rule_RWVB(address, 'B') # when value change, don't care changed_bits
             deal_rule_RWVB(address, 'V', changed_bits) # when value change
-            
+
+user_input_empty = False
+
 def blockHook(uc, address, size, user_data):
     # every INTERRUPT_INTERVAL blocks, update flag and write into receive buffer
     if (globs.block_count % globs.config.systick_reload) == 0 :
         # update flag
         deal_rule_flag('counter')
+    if (globs.block_count % globs.config.data_reload) == 0 :
+        # input 4 bytes into receive buffer once
+        hardware_write_to_receive_buffer_list(RULE.data_regs, globs.user_input[:4])
+        globs.user_input = globs.user_input[4:]
+        global user_input_empty
+        # if user_input is empty twice, exit
+        if user_input_empty and len(globs.user_input) == 0:
+            debug_info("user_input is empty twice, exit.\n", 1)
+            do_exit(0)
+        if len(globs.user_input) == 0:
+            user_input_empty = True
 
 def forkpointHook(uc, address, size, user_data):
     '''
@@ -766,9 +779,11 @@ def beginpointHook(uc, address, size, user_data):
     globs.config.fork_point_times = len(globs.user_input)>>2 # will change it in the future
     # just write 4 bytes
     hardware_write_to_receive_buffer_list(RULE.data_regs, globs.user_input[:4])
-    # tmp store other user input
-    for data_reg in RULE.data_regs:
-        RULE.regs[data_reg].value.user_r_fifo = globs.user_input[4:]
+    # just write 4 bytes
+    globs.user_input = globs.user_input[4:]
+    # # tmp store other user input
+    # for data_reg in RULE.data_regs:
+    #     RULE.regs[data_reg].value.user_r_fifo = globs.user_input[4:]
     uc.hook_del(RULE.beginpointHook_handler)
 
 def semu_state_dump(path):
