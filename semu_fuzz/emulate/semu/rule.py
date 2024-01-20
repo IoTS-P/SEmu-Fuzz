@@ -1155,7 +1155,11 @@ class RULE():
         uc.hook_add(UC_HOOK_INTR, exceptionexitHook)
 
         # add beigin_point hook to place user input
-        ru.beginpointHook_handler = uc.hook_add(UC_HOOK_CODE, beginpointHook, begin=globs.config.begin_point - 1, end=globs.config.begin_point|1)
+        if globs.config.begin_point:
+            ru.beginpointHook_handler = uc.hook_add(UC_HOOK_CODE, beginpointHook, begin=globs.config.begin_point - 1, end=globs.config.begin_point | 1)
+        # if begin_point is None, then just add hook at any address
+        else:
+            ru.beginpointHook_handler = uc.hook_add(UC_HOOK_CODE, beginpointHook)
 
         # deal O once
         deal_rule_O()

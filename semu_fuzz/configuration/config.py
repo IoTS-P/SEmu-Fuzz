@@ -14,7 +14,7 @@ default_config = Namespace(
     symbols=None,  # symbol table
     isr_vector=0, # the isr vector
     emulate_mode='fuzz',  # support: emulate, fuzz
-    begin_point=0,  # the beginning of the data input, default is entry_point
+    begin_point=None,  # the beginning of the data input, default is entry_point
     fork_points=[],  # the point of the main loop of the bin
     fork_point_times=2, # the max time to meet fork point when fuzz
     enable_native=False, # True if your want to use c 
@@ -58,9 +58,6 @@ def parse_config():
         for addr in symbols_addr:
             if (addr & 1) == 1:
                 config['symbols'][addr - 1] = config['symbols'].pop(addr)
-    # set default begin_point
-    if 'begin_point' not in config:
-        config['begin_point'] = config['entry_point']
     # record config content
     default_config.__dict__.update(config)
     globs.config = default_config
