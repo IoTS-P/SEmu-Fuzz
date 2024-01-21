@@ -41,7 +41,10 @@ def _dump_new_blocks(stat_path):
             new_block_str = " ".join(new_block)
             f.write(f"{stamp}\t{len(visit_blocks)}\t{new_block_str}\n")
 
-def stat(base_configs):
+def stat(base_configs, args):
+    prefix = args.prefix
+    max_threads = args.thread
+    timeout = args.timeout
     # dump all the file
     for firmware_elfpath, base_config in base_configs.items():
         try:
@@ -53,7 +56,7 @@ def stat(base_configs):
             stat_path = os.path.join(firmware_dir, 'stat')
             config_path = os.path.join(firmware_dir, f'{model}_config.yml')
             # find_folders
-            dirs = find_output_folders(firmware_dir, "output")
+            dirs = find_output_folders(firmware_dir, prefix)
             # get all the results
             result_index = 0
             for base_dir in dirs:
@@ -88,7 +91,6 @@ def stat(base_configs):
                 commands[0] += " --snapshot-disable"
                 # execute the command no order
                 # create threadpool
-                max_threads = 100
                 pool = concurrent.futures.ThreadPoolExecutor(max_workers=max_threads)
                 # add task into threadpool
                 futures = []
@@ -96,7 +98,7 @@ def stat(base_configs):
                 task_id = 0
                 for command in commands:
                     # add this task into thread pool
-                    future = pool.submit(run_task, command, task_id, 600)
+                    future = pool.submit(run_task, command, task_id, timeout)
                     futures.append(future)
                     task_id += 1
 

@@ -17,6 +17,9 @@ def _parse_args():
     parser.add_argument('-a', '--afl', default=False, action="store_true", help="[for launch] If set, enable the dumping of vscode launch with AFL.")
     parser.add_argument('-s', '--syms', default=False, action="store_true", help="[for config] If set, enable symbols table extract. (This arg is not recommended. Recommend using ida_dump_symbols.py to dump syms)")
     parser.add_argument('-t', '--duration', default=24, type=int, help="[for run] The duration of AFL execution, the default value is 24, which means 24 hours.")
+    parser.add_argument('--prefix', default='output', type=str, help="[for stat] The prefix is the output directory of the AFL fuzzing campaign. The default value is 'output'. Only stat from the directory with the prefix.")
+    parser.add_argument('--thread', default=30, type=int, help="[for stat] The thread number of stat. The default value is 30.")
+    parser.add_argument('--timeout', default=600, type=int, help="[for stat] The timeout of stat. The default value is 600s.")
     return parser.parse_args()
 
 
@@ -27,7 +30,7 @@ def main():
     if args.command == 'config':
         config(base_configs, args.syms)
     elif args.command == 'stat':
-        stat(base_configs)
+        stat(base_configs, args)
     elif args.command == 'launch':
         launch(base_configs, args.afl)
     elif args.command == 'run':
