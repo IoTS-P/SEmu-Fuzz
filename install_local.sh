@@ -26,33 +26,7 @@ workon $VIRTUALENV_NAME 2>/dev/null || mkvirtualenv $VIRTUALENV_NAME --python=py
 echo "[+] Success to workon virtualenv!"
 
 # get afl
-git config --global core.longpaths true
-git clone https://github.com/AFLplusplus/AFLplusplus
-cd AFLplusplus/
-make || exit 1
-sudo make install || exit 1
-echo "[+] Success to build AFL!"
-
-# ./build_unicorn_support.sh || exit 1
-#  replace the build_unicorn_support.sh  with the content below.
-# get unicornafl
-git -C unicorn_mode submodule foreach --recursive git pull origin master # don't update other submodule
-cd unicorn_mode/
-# fix the submodle init
-git clone https://github.com/AFLplusplus/unicornafl
-# install unicornafll
-cd unicornafl/bindings/python
-pip install .
-cd ../../
-# fix the libunicorn.so
-make clean
-make -j1
-cd ./unicorn/build/
-sudo make install || exit 1
-cd ../../../
-echo "[+] Success to build Unicornafl!"
-
-cd ../../
+./install_afl.sh
 
 # install SEmu-Fuzz
 pip install . || exit 1

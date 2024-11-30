@@ -54,21 +54,7 @@ sudo -S apt-get install -y gcc-$(gcc --version|head -n1|sed 's/\..*//'|sed 's/.*
 sudo -S apt-get install -y ninja-build # for QEMU mode
 
 # get afl
-git config --global core.longpaths true
-git clone https://github.com/AFLplusplus/AFLplusplus
-cd AFLplusplus/
-make || exit 1
-sudo make install || exit 1
-git -C unicorn_mode submodule foreach --recursive git pull origin master || exit 1 # don't update other submodule
-cd unicorn_mode/
-./build_unicorn_support.sh || exit 1
-# fix the libunicorn.so
-cd unicornafl/unicorn/build/
-sudo make install || exit 1
-cd ../../../
-echo "[+] Success to build AFL!"
-
-cd ../../
+./install_afl.sh
 
 # install EmuWP-Fuzz
 pip install . || exit 1
